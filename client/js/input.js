@@ -1,0 +1,184 @@
+// input.js — raw key state, per-player input snapshot, input buffer
+
+import { getRemoteInput } from './network.js';
+
+// --- Key state ---
+const keysDown = new Set();
+// Counter map instead of Set — tracks how many times a key was pressed this frame.
+// A Set would collapse two rapid presses between rAF frames into one, dropping inputs.
+let pressedThisAccum = new Map();
+
+window.addEventListener('keydown', e => {
+  e.preventDefault();
+  if (!e.repeat) {
+    pressedThisAccum.set(e.code, (pressedThisAccum.get(e.code) || 0) + 1);
+    console.log('[input] keydown:', e.code);
+  }
+  keysDown.add(e.code);
+});
+
+window.addEventListener('keyup', e => {
+  e.preventDefault();
+  keysDown.delete(e.code);
+  console.log('[input] keyup:', e.code);
+});
+
+// --- Key bindings per player ---
+const BINDINGS = [
+  // Player 1 — Arrow keys + Z/X/C  (no key conflicts with P2)
+  { left: 'ArrowLeft', right: 'ArrowRight', up: 'ArrowUp', down: 'ArrowDown',
+    punch: 'KeyZ', kick: 'KeyX', block: 'KeyC' },
+  // Player 2 — WASD + J/K/L  (no key conflicts with P1)
+  { left: 'KeyA', right: 'KeyD', up: 'KeyW', down: 'KeyS',
+    punch: 'KeyJ', kick: 'KeyK', block: 'KeyL' },
+];
+
+// --- Input buffer (12-frame ring buffer, per-sim-tick) ---
+const BUFFER_SIZE = 12;
+export const DIR_UP    = 0b0001;
+export const DIR_DOWN  = 0b0010;
+export const DIR_LEFT  = 0b0100;
+export const DIR_RIGHT = 0b1000;
+
+const dirBuffer  = [new Uint8Array(BUFFER_SIZE), new Uint8Array(BUFFER_SIZE)];
+const bufferHead = [0, 0];
+
+// Called once per rAF, BEFORE the tick loop.
+// pressedThisAccum is already populated by keydown events directly — nothing to do here.
+// Kept as a call-site hook for future use (e.g. rollback input sampling).
+export function sampleKeys() {}
+
+// Called per simulation tick. Returns input snapshot for the given player.
+// Movement is level-triggered (from keysDown).
+// Punch/kick/block button presses are edge-triggered (from pressedThisAccum).
+export function snapshot(playerIdx) {
+  // Check network first (Part 2 hook — currently always returns null)
+  const remote = getRemoteInput(playerIdx);
+  if (remote !== null) return remote;
+
+  const b = BINDINGS[playerIdx];
+
+  const left  = keysDown.has(b.left);
+  const right = keysDown.has(b.right);
+  const up    = keysDown.has(b.up);
+  const down  = keysDown.has(b.down);
+  // Read counts, then consume (decrement) so a 2-tick rAF frame can't double-fire the same press.
+  const pc = pressedThisAccum.get(b.punch) || 0;
+  const kc = pressedThisAccum.get(b.kick)  || 0;
+  const punch = pc > 0;
+  const kick  = kc > 0;
+  if (punch) pressedThisAccum.set(b.punch, pc - 1);
+  if (kick)  pressedThisAccum.set(b.kick,  kc - 1);
+  if (punch || kick) {
+    console.log(`[snapshot P${playerIdx + 1}] attack: ${punch ? 'punch' : 'kick'}`);
+  }
+  const block = keysDown.has(b.block);
+
+  // Push to direction buffer
+  let dir = 0;
+  if (up)    dir |= DIR_UP;
+  if (down)  dir |= DIR_DOWN;
+  if (left)  dir |= DIR_LEFT;
+  if (right) dir |= DIR_RIGHT;
+
+  const head = bufferHead[playerIdx];
+  dirBuffer[playerIdx][head] = dir;
+  bufferHead[playerIdx] = (head + 1) % BUFFER_SIZE;
+
+  return { left, right, up, down, punch, heavyPunch: false, kick, heavyKick: false, block };
+}
+
+// Called once per rAF, AFTER the tick loop (only when at least one tick ran).
+// Attack keys are consumed (decremented) by snapshot(), so any remaining count
+// here means something went wrong.
+export function clearFrame() {
+  pressedThisAccum.clear();
+}
+
+// Check if a directional motion was performed within the buffer window.
+// motionSteps: array of DIR_* bitmasks e.g. [DIR_DOWN, DIR_DOWN|DIR_RIGHT, DIR_RIGHT] for QCF
+export function checkMotion(playerIdx, motionSteps) {
+  const buf = dirBuffer[playerIdx];
+  const head = bufferHead[playerIdx];
+  let step = motionSteps.length - 1;
+  for (let i = 0; i < BUFFER_SIZE && step >= 0; i++) {
+    const idx = (head - i + BUFFER_SIZE) % BUFFER_SIZE;
+    // Strict superset match: the buffer entry must contain ALL required direction bits.
+    // A lenient OR-match would cause false-positive specials (e.g. walking right +
+    // any old crouch = accidental QCF, since RIGHT satisfies DOWN|RIGHT with OR).
+    if ((buf[idx] & motionSteps[step]) === motionSteps[step]) step--;
+  }
+  return step < 0;
+}
+
+// --- Motion preset checks ---
+
+export function checkQCF(playerIdx) {
+  return checkMotion(playerIdx, [DIR_DOWN, DIR_DOWN | DIR_RIGHT, DIR_RIGHT]);
+}
+
+export function checkQCB(playerIdx) {
+  return checkMotion(playerIdx, [DIR_DOWN, DIR_DOWN | DIR_LEFT, DIR_LEFT]);
+}
+
+export function checkDP(playerIdx, facing) {
+  // Forward, Down, Down-Forward
+  const fwd  = facing === 1 ? DIR_RIGHT : DIR_LEFT;
+  const dfwd = facing === 1 ? (DIR_DOWN | DIR_RIGHT) : (DIR_DOWN | DIR_LEFT);
+  return checkMotion(playerIdx, [fwd, DIR_DOWN, dfwd]);
+}
+
+// Detect double-tap of a direction (dir = DIR_RIGHT or DIR_LEFT)
+export function checkDoubleTap(playerIdx, dir) {
+  const buf  = dirBuffer[playerIdx];
+  const head = bufferHead[playerIdx];
+  let count    = 0;
+  let lastWas  = false;
+  for (let i = 0; i < BUFFER_SIZE; i++) {
+    const idx = (head - i + BUFFER_SIZE) % BUFFER_SIZE;
+    const has = !!(buf[idx] & dir);
+    if (!lastWas && has) count++;
+    lastWas = has;
+    if (count >= 2) return true;
+  }
+  return false;
+}
+
+// Zero out the direction buffer for a player after a special fires,
+// preventing the same motion from triggering the special again next frame.
+export function clearMotionOnUse(playerIdx) {
+  dirBuffer[playerIdx].fill(0);
+}
+
+// Check if Enter or Space is currently pressed (for menu navigation).
+export function isMenuConfirm() {
+  return pressedThisAccum.get('Enter') || pressedThisAccum.get('Space');
+}
+
+// Pause toggle (1P mode only)
+export function isPauseKey()  { return pressedThisAccum.get('KeyP'); }
+export function isEscapeKey() { return pressedThisAccum.get('Escape'); }
+
+// Controls overlay toggle
+export function isTabKey() { return pressedThisAccum.get('Tab'); }
+
+// Debug overlay toggle (I key)
+export function isDebugKey() { return pressedThisAccum.get('KeyI'); }
+
+// Arrow-key edge triggers for menu navigation.
+export function isMenuUp()   { return pressedThisAccum.get('ArrowUp');   }
+export function isMenuDown() { return pressedThisAccum.get('ArrowDown'); }
+
+// Left/right edge triggers for character select navigation — always arrow keys.
+// Char select is sequential so both players can share the same keys.
+export function isMenuLeft()  { return pressedThisAccum.get('ArrowLeft');  }
+export function isMenuRight() { return pressedThisAccum.get('ArrowRight'); }
+
+// Returns true if a direction key was just pressed this frame (edge, not hold).
+// Used to gate dash detection — dash should only fire on a fresh tap, not while holding.
+export function isDirEdge(playerIdx, dirBitmask) {
+  const b = BINDINGS[playerIdx];
+  if (dirBitmask === DIR_LEFT)  return pressedThisAccum.get(b.left);
+  if (dirBitmask === DIR_RIGHT) return pressedThisAccum.get(b.right);
+  return false;
+}

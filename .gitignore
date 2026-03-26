@@ -1,0 +1,13 @@
+# Claude / AI tooling
+.claude/
+.mcp.json
+CLAUDE.md
+BUILD_PLAN.md
+specs/
+
+# Reference art
+RyuCE.png
+SFAlpha3_Reference_Screenshots/
+
+# OS
+.DS_Store
