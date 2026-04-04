@@ -12,7 +12,6 @@ window.addEventListener('keydown', e => {
   e.preventDefault();
   if (!e.repeat) {
     pressedThisAccum.set(e.code, (pressedThisAccum.get(e.code) || 0) + 1);
-    console.log('[input] keydown:', e.code);
   }
   keysDown.add(e.code);
 });
@@ -20,14 +19,13 @@ window.addEventListener('keydown', e => {
 window.addEventListener('keyup', e => {
   e.preventDefault();
   keysDown.delete(e.code);
-  console.log('[input] keyup:', e.code);
 });
 
 // --- Key bindings per player ---
 const BINDINGS = [
-  // Player 1 — Arrow keys + Z/X/C  (no key conflicts with P2)
+  // Player 1 — Arrow keys + A/S/X
   { left: 'ArrowLeft', right: 'ArrowRight', up: 'ArrowUp', down: 'ArrowDown',
-    punch: 'KeyZ', kick: 'KeyX', block: 'KeyC' },
+    punch: 'KeyA', kick: 'KeyS', block: 'KeyX' },
   // Player 2 — WASD + J/K/L  (no key conflicts with P1)
   { left: 'KeyA', right: 'KeyD', up: 'KeyW', down: 'KeyS',
     punch: 'KeyJ', kick: 'KeyK', block: 'KeyL' },
@@ -69,9 +67,6 @@ export function snapshot(playerIdx) {
   const kick  = kc > 0;
   if (punch) pressedThisAccum.set(b.punch, pc - 1);
   if (kick)  pressedThisAccum.set(b.kick,  kc - 1);
-  if (punch || kick) {
-    console.log(`[snapshot P${playerIdx + 1}] attack: ${punch ? 'punch' : 'kick'}`);
-  }
   const block = keysDown.has(b.block);
 
   // Push to direction buffer
@@ -93,39 +88,6 @@ export function snapshot(playerIdx) {
 // here means something went wrong.
 export function clearFrame() {
   pressedThisAccum.clear();
-}
-
-// Check if a directional motion was performed within the buffer window.
-// motionSteps: array of DIR_* bitmasks e.g. [DIR_DOWN, DIR_DOWN|DIR_RIGHT, DIR_RIGHT] for QCF
-export function checkMotion(playerIdx, motionSteps) {
-  const buf = dirBuffer[playerIdx];
-  const head = bufferHead[playerIdx];
-  let step = motionSteps.length - 1;
-  for (let i = 0; i < BUFFER_SIZE && step >= 0; i++) {
-    const idx = (head - i + BUFFER_SIZE) % BUFFER_SIZE;
-    // Strict superset match: the buffer entry must contain ALL required direction bits.
-    // A lenient OR-match would cause false-positive specials (e.g. walking right +
-    // any old crouch = accidental QCF, since RIGHT satisfies DOWN|RIGHT with OR).
-    if ((buf[idx] & motionSteps[step]) === motionSteps[step]) step--;
-  }
-  return step < 0;
-}
-
-// --- Motion preset checks ---
-
-export function checkQCF(playerIdx) {
-  return checkMotion(playerIdx, [DIR_DOWN, DIR_DOWN | DIR_RIGHT, DIR_RIGHT]);
-}
-
-export function checkQCB(playerIdx) {
-  return checkMotion(playerIdx, [DIR_DOWN, DIR_DOWN | DIR_LEFT, DIR_LEFT]);
-}
-
-export function checkDP(playerIdx, facing) {
-  // Forward, Down, Down-Forward
-  const fwd  = facing === 1 ? DIR_RIGHT : DIR_LEFT;
-  const dfwd = facing === 1 ? (DIR_DOWN | DIR_RIGHT) : (DIR_DOWN | DIR_LEFT);
-  return checkMotion(playerIdx, [fwd, DIR_DOWN, dfwd]);
 }
 
 // Detect double-tap of a direction (dir = DIR_RIGHT or DIR_LEFT)
@@ -151,13 +113,26 @@ export function clearMotionOnUse(playerIdx) {
 }
 
 // Check if Enter or Space is currently pressed (for menu navigation).
+// Consuming read — prevents double-confirm on 0-tick frames (same issue as isPauseKey).
 export function isMenuConfirm() {
-  return pressedThisAccum.get('Enter') || pressedThisAccum.get('Space');
+  const e = pressedThisAccum.get('Enter');
+  const s = pressedThisAccum.get('Space');
+  if (e) pressedThisAccum.delete('Enter');
+  if (s) pressedThisAccum.delete('Space');
+  return e || s;
 }
 
-// Pause toggle (1P mode only)
-export function isPauseKey()  { return pressedThisAccum.get('KeyP'); }
-export function isEscapeKey() { return pressedThisAccum.get('Escape'); }
+// Pause toggle (1P mode only) — consuming reads prevent double-toggle on 0-tick frames
+export function isPauseKey() {
+  const c = pressedThisAccum.get('KeyP');
+  if (c) pressedThisAccum.delete('KeyP');
+  return c;
+}
+export function isEscapeKey() {
+  const c = pressedThisAccum.get('Escape');
+  if (c) pressedThisAccum.delete('Escape');
+  return c;
+}
 
 // Controls overlay toggle
 export function isTabKey() { return pressedThisAccum.get('Tab'); }

@@ -1,12 +1,13 @@
 export default {
   id: 'skater',
+  voice: 'male',
   displayName: 'SKATER',
   startX: 140,
   facing: 1,
   stats: {
     hp: 200,
     walkSpeed: 3.2,
-    jumpVy: -11.5,
+    jumpVy: -13.23,
     jumpVx: 3.2,
   },
   palette: {
@@ -20,9 +21,9 @@ export default {
   holdWalkFrame: 15,
   moves: {
     punch: {
-      startup: 2, active: 4, recovery: 5,
+      startup: 2, active: 5, recovery: 5,
       damage: 7, knockback: 2.0,
-      hitboxOffsetX: 30, hitboxW: 55, hitboxY: -150, hitboxH: 30,
+      hitboxOffsetX: 30, hitboxW: 63, hitboxY: -150, hitboxH: 30,
     },
     heavyPunch: {
       startup: 5, active: 4, recovery: 7,
@@ -40,44 +41,8 @@ export default {
       hitboxOffsetX: 20, hitboxW: 95, hitboxY: -80, hitboxH: 45,
     },
   },
-  specials: [
-    {
-      id: 'skate_dash',
-      input: 'qcf',
-      button: 'punch',
-      damage: 20,
-      startup: 3,
-      active: 8,
-      recovery: 10,
-      type: 'dash_strike',
-      vx: 6,
-    },
-    {
-      id: 'ollie_kick',
-      input: 'dp',
-      button: 'kick',
-      damage: 18,
-      startup: 4,
-      active: 8,
-      recovery: 12,
-      type: 'uppercut',
-      liftVy: -9,
-      vx: 3,
-      hitboxOffsetX: 4, hitboxW: 28, hitboxY: -52, hitboxH: 18,
-    },
-  ],
-  super: {
-    id: 'grind_rush',
-    input: 'qcf_qcf',
-    button: 'punch',
-    damage: 32,
-    meterCost: 100,
-    hits: 5,
-    vignetteText: 'GRIND RUSH!',
-    type: 'rush_super',
-    vx: 6,
-  },
   holdCrouchFrame: 12,  // frame 12 of 25 = fully crouched pose
+  holdBlockFrame:  21,  // frame 21 of 22 = last frame
   animations: {
     idle:       { frames: 20, fps: 24, loop: true, frameDurations: [120, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3] },
     walk:       { frames: 23, fps: 30, loop: true  },
@@ -87,7 +52,7 @@ export default {
     heavyPunch: { frames: 20, fps: 60, loop: false },
     kick:       { frames: 15, fps: 60, loop: false },
     heavyKick:  { frames: 15, fps: 60, loop: false },
-    block:      { frames: 20, fps: 40, loop: true  },
+    block:      { frames: 22, fps: 80, loop: false },
     hit:        { frames: 20, fps: 60, loop: false },
     airHit:     { frames: 20, fps: 60, loop: false },
     ko:         { frames: 20, fps: 8,  loop: false },
@@ -104,6 +69,7 @@ export default {
     jump:   { src: 'assets/characters/skater/SKATER_JUMP2',   cols: 25, frameW: 382, frameH: 216 },
     punch:  { src: 'assets/characters/skater/SKATER_PUNCH4',  cols: 20, frameW: 382, frameH: 216 },
     kick:   { src: 'assets/characters/skater/SKATER_KICK3',   cols: 15, frameW: 382, frameH: 216 },
+    block:  { src: 'assets/characters/skater/skater_block.png', cols: 22, frameW: 382, frameH: 216 },
   },
   portrait: null,
 };

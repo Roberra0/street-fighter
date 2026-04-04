@@ -1,12 +1,13 @@
 export default {
   id: 'tech_bro',
+  voice: 'male',
   displayName: 'TECH BRO',
   startX: 140,
   facing: 1,
   stats: {
     hp: 220,
     walkSpeed: 2.4,
-    jumpVy: -10.0,
+    jumpVy: -11.5,
     jumpVx: 2.4,
   },
   palette: {
@@ -19,7 +20,7 @@ export default {
   crouchHurtboxW: 76, crouchHurtboxH: 105,
   moves: {
     punch: {
-      startup: 2, active: 4, recovery: 5,
+      startup: 2, active: 5, recovery: 5,
       damage: 8, knockback: 2.2,
       hitboxOffsetX: 30, hitboxW: 55, hitboxY: -150, hitboxH: 30,
     },
@@ -39,42 +40,8 @@ export default {
       hitboxOffsetX: 20, hitboxW: 95, hitboxY: -80, hitboxH: 45,
     },
   },
-  specials: [
-    {
-      id: 'disrupt',
-      input: 'qcf',
-      button: 'punch',
-      damage: 22,
-      startup: 4,
-      active: 10,
-      recovery: 10,
-      type: 'dash_strike',
-      vx: 5,
-    },
-    {
-      id: 'pivot_kick',
-      input: 'qcb',
-      button: 'kick',
-      damage: 20,
-      startup: 5,
-      active: 10,
-      recovery: 12,
-      type: 'spinning',
-      vx: 3,
-    },
-  ],
-  super: {
-    id: 'ipo_rush',
-    input: 'qcf_qcf',
-    button: 'punch',
-    damage: 34,
-    meterCost: 100,
-    hits: 6,
-    vignetteText: 'IPO RUSH!',
-    type: 'rush_super',
-    vx: 5,
-  },
-  holdCrouchFrame: 7,   // frame 7 of 15 = fully crouched pose
+  holdCrouchFrame: 11,   // frame 7 of 15 = fully crouched pose
+  holdBlockFrame:  18,   // frame 18 of 19 = last frame
   // Frame counts: idle:8  walk:10  jump:25  kick:15  punch:20
   animations: {
     idle:       { frames: 8,  fps: 12, loop: true  },
@@ -85,7 +52,7 @@ export default {
     heavyPunch: { frames: 20, fps: 90, loop: false },
     kick:       { frames: 15, fps: 60, loop: false },
     heavyKick:  { frames: 15, fps: 60, loop: false },
-    block:      { frames: 19, fps: 40, loop: true  },
+    block:      { frames: 19, fps: 80, loop: false },
     hit:        { frames: 19, fps: 60, loop: false },
     airHit:     { frames: 19, fps: 60, loop: false },
     ko:         { frames: 19, fps: 8,  loop: false },
@@ -103,6 +70,7 @@ export default {
     punch:  { src: 'assets/characters/tech_bro/techbro_punch', cols: 20, frameW: 382, frameH: 216 },
     kick:   { src: 'assets/characters/tech_bro/techbro_kick',  cols: 15, frameW: 382, frameH: 216 },
     recoil: { src: 'assets/characters/tech_bro/TECH_RECOIL2',  cols: 19, frameW: 382, frameH: 216 },
+    block:  { src: 'assets/characters/tech_bro/tech_block.png', cols: 19, frameW: 382, frameH: 216 },
   },
   portrait: null,
 };

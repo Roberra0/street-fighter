@@ -1,12 +1,13 @@
 export default {
   id: 'dread',
+  voice: 'male',
   displayName: 'DREAD',
   startX: 140,
   facing: 1,
   stats: {
     hp: 240,
     walkSpeed: 2.6,
-    jumpVy: -10.5,
+    jumpVy: -12.08,
     jumpVx: 2.6,
   },
   palette: {
@@ -19,7 +20,7 @@ export default {
   crouchHurtboxW: 68, crouchHurtboxH: 105,
   moves: {
     punch: {
-      startup: 2, active: 5, recovery: 6,
+      startup: 2, active: 6, recovery: 6,
       damage: 8, knockback: 2.5,
       hitboxOffsetX: 28, hitboxW: 55, hitboxY: -148, hitboxH: 30,
     },
@@ -39,45 +40,11 @@ export default {
       hitboxOffsetX: 18, hitboxW: 92, hitboxY: -78, hitboxH: 44,
     },
   },
-  specials: [
-    {
-      id: 'dread_rush',
-      input: 'qcf',
-      button: 'punch',
-      damage: 24,
-      startup: 4,
-      active: 10,
-      recovery: 10,
-      type: 'dash_strike',
-      vx: 5,
-    },
-    {
-      id: 'dread_spin',
-      input: 'qcb',
-      button: 'kick',
-      damage: 22,
-      startup: 5,
-      active: 12,
-      recovery: 12,
-      type: 'spinning',
-      vx: 3,
-    },
-  ],
-  super: {
-    id: 'dread_storm',
-    input: 'qcf_qcf',
-    button: 'punch',
-    damage: 34,
-    meterCost: 100,
-    hits: 6,
-    vignetteText: 'DREAD STORM!',
-    type: 'rush_super',
-    vx: 5,
-  },
   holdCrouchFrame: 10,  // frame 10 of 20 = fully crouched pose
+  holdBlockFrame:  24,  // frame 24 of 25 = last frame
   // Frame counts: idle:25  walk:21  punch:13  kick:19  recoil:12
   animations: {
-    idle:       { frames: 25, fps: 30, loop: true  },
+    idle:       { frames: 13, fps: 24, loop: true, pingPong: true },
     walk:       { frames: 21, fps: 24, loop: true  },
     crouch:     { frames: 20, fps: 60, loop: true  },
     jump:       { frames: 14, fps: 14, loop: false },
@@ -85,7 +52,7 @@ export default {
     heavyPunch: { frames: 13, fps: 60, loop: false },
     kick:       { frames: 19, fps: 60, loop: false },
     heavyKick:  { frames: 19, fps: 60, loop: false },
-    block:      { frames: 9,  fps: 30, loop: true  },
+    block:      { frames: 25, fps: 80, loop: false },
     hit:        { frames: 9,  fps: 40, loop: false },
     airHit:     { frames: 9,  fps: 40, loop: false },
     ko:         { frames: 9,  fps: 8,  loop: false },
@@ -104,6 +71,7 @@ export default {
     recoil: { src: 'assets/characters/dread/DREAD_RECOIL',  cols: 9,  frameW: 382, frameH: 216 },
     crouch: { src: 'assets/characters/dread/DREAD_CROUCH',  cols: 20, frameW: 382, frameH: 216 },
     jump:   { src: 'assets/characters/dread/DREAD_JUMP',    cols: 14, frameW: 382, frameH: 216 },
+    block:  { src: 'assets/characters/dread/dread_block.png', cols: 25, frameW: 382, frameH: 216 },
   },
   portrait: null,
 };

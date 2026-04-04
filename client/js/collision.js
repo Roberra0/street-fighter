@@ -15,6 +15,8 @@ export function boxHit(a, b) {
 // Push two fighters apart if their hurtboxes overlap.
 // Accepts fighters as arguments (no global p1/p2 references).
 export function pushApart(f1, f2) {
+  // Allow jumping over opponents — only push while both are grounded
+  if (!f1.grounded || !f2.grounded) return;
   const a = f1.hurtbox();
   const b = f2.hurtbox();
   if (boxHit(a, b)) {

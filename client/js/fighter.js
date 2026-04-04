@@ -1,6 +1,17 @@
 // fighter.js — Fighter class + stepAnimation() + character registry
 const t = () => `+${performance.now().toFixed(1)}ms`;
 
+// ---- Altman idle frame log ----
+const _altmanLog = [];
+window.downloadAltmanLog = () => {
+  const blob = new Blob([_altmanLog.join('\n')], { type: 'text/plain' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'samidlelog.md';
+  a.click();
+};
+window.addEventListener('keydown', e => { if (e.key === 'L') window.downloadAltmanLog(); });
+
 import ryuDef   from '../assets/characters/ryu/def.js';
 import trumpDef from '../assets/characters/trump/def.js';
 import obamaDef from '../assets/characters/obama/def.js';
@@ -10,8 +21,13 @@ import ladyKickboxerDef from '../assets/characters/lady_kickboxer/def.js';
 import dreadDef         from '../assets/characters/dread/def.js';
 import skaterDef        from '../assets/characters/skater/def.js';
 import techBroDef       from '../assets/characters/tech_bro/def.js';
+import zuckDef          from '../assets/characters/zuck/def.js';
+import altmanDef        from '../assets/characters/sam_altman/def.js';
+import jackedJeffDef    from '../assets/characters/jacked_jeff/def.js';
+import jensenDef        from '../assets/characters/jensen/def.js';
+import skinnyJeffDef    from '../assets/characters/skinny_jeff/def.js';
 import {
-  checkQCF, checkQCB, checkDP, checkDoubleTap, isDirEdge,
+  checkDoubleTap, isDirEdge,
   clearMotionOnUse,
   DIR_RIGHT, DIR_LEFT,
 } from './input.js';
@@ -27,6 +43,11 @@ export const CHARACTERS = {
   dread:          dreadDef,
   skater:         skaterDef,
   tech_bro:       techBroDef,
+  zuck:           zuckDef,
+  altman:         altmanDef,
+  jacked_jeff:    jackedJeffDef,
+  jensen:         jensenDef,
+  skinny_jeff:    skinnyJeffDef,
 };
 
 // ---- Physics constants (must match game.js / collision.js) ----
@@ -62,6 +83,7 @@ export class Fighter {
     this.comboTimer  = 0;
     this.stunTimer   = 0;
     this.pushVx      = 0;
+    this.runBurst    = 0;  // frames remaining of fast-walk dash burst
     this.currentSpecial = null;  // active special/super definition
     this.crouchAttack   = false; // was crouching when attack started (lower hitbox)
     this.tookDamage     = false; // true if hit at least once this round
@@ -70,6 +92,7 @@ export class Fighter {
     // Animation state (stepAnimation lives here per arch-review)
     this.animFrame   = 0;
     this.animCounter = 0;
+    this.animDir     = 1; // 1 = forward, -1 = reverse (for pingPong loops)
   }
 
   // state getter/setter — resets animation counters on state change
@@ -81,6 +104,12 @@ export class Fighter {
       this._state      = newState;
       this.animFrame   = 0;
       this.animCounter = 0;
+      this.animDir     = 1;
+      if (newState === 'ko') {
+        this._koBounceCount    = 0;
+        this._koHoldFrames     = 0;
+        this._koAnnounceTimer  = 0;
+      }
     }
   }
 
@@ -93,7 +122,8 @@ export class Fighter {
                  || (this.def.animations && this.def.animations.idle)
                  || { frames: 1, fps: 8, loop: true };
     this.animCounter++;
-    const defaultTicks = Math.max(1, Math.round(60 / animDef.fps));
+    const fpsMult = (this._state === 'walk' && this.runBurst > 0) ? 2.0 : 1;
+    const defaultTicks = Math.max(1, Math.round(60 / (animDef.fps * fpsMult)));
     const ticksPerFrame = animDef.frameDurations
       ? (animDef.frameDurations[this.animFrame] ?? defaultTicks)
       : defaultTicks;
@@ -101,7 +131,12 @@ export class Fighter {
       this.animCounter = 0;
       // Crouch hold-frame: advance to holdCrouchFrame then freeze while button held
       const holdCrouchAt = this.def.holdCrouchFrame;
-      if (this._state === 'crouch' && holdCrouchAt !== undefined) {
+      // Block hold-frame: advance to holdBlockFrame then freeze while blocking
+      const holdBlockAt = this.def.holdBlockFrame;
+      if (this._state === 'block' && holdBlockAt !== undefined) {
+        if (this.animFrame < holdBlockAt) this.animFrame++;
+        // else stay frozen at holdBlockAt
+      } else if (this._state === 'crouch' && holdCrouchAt !== undefined) {
         if (this.animFrame < holdCrouchAt) this.animFrame++;
         // else stay frozen at holdCrouchAt
       } else if (this._state === 'crouchFinish') {
@@ -118,8 +153,25 @@ export class Fighter {
         // Continue walk animation from holdWalkFrame+1 after key release
         this.animFrame = Math.min(this.animFrame + 1, animDef.frames - 1);
         if (this.animFrame >= animDef.frames - 1) this.state = 'idle';
+      } else if (animDef.loop && animDef.pingPong) {
+        this.animFrame += this.animDir;
+        if (this.animFrame >= animDef.frames - 1) {
+          this.animFrame = animDef.frames - 1;
+          this.animDir = -1;
+        } else if (this.animFrame <= 0) {
+          this.animFrame = 0;
+          this.animDir = 1;
+        }
       } else if (animDef.loop) {
-        this.animFrame = (this.animFrame + 1) % animDef.frames;
+        this.animFrame++;
+        if (this.animFrame >= animDef.frames) {
+          this.animFrame = animDef.loopFrom !== undefined ? animDef.loopFrom : 0;
+        }
+        if (this.def.id === 'altman' && this._state === 'idle') {
+          const seq = animDef.frameSequence;
+          const spriteFrame = seq ? seq[Math.min(this.animFrame, seq.length - 1)] : this.animFrame;
+          _altmanLog.push(`animFrame=${this.animFrame} spriteFrame=${spriteFrame}`);
+        }
       } else {
         this.animFrame = Math.min(this.animFrame + 1, animDef.frames - 1);
         // Hit animation finished and stun already expired → return to idle
@@ -135,12 +187,9 @@ export class Fighter {
   // Called during freeze ticks so attack presses aren't lost while sim is paused.
   feedInputBuffer(inp) {
     const freshAtk =
-      inp.punch      ? 'punch'      :
-      inp.heavyPunch ? 'heavyPunch' :
-      inp.kick       ? 'kick'       :
-      inp.heavyKick  ? 'heavyKick'  : null;
+      inp.punch ? 'punch' :
+      inp.kick  ? 'kick'  : null;
     if (freshAtk) {
-      console.log(`${t()} [P${this.playerIdx + 1}] press: ${freshAtk} | state: ${this._state} | canAct: ${this.canAct()} | stun: ${this.stunTimer}`);
       this.inputBuffer      = freshAtk;
       this.inputBufferTimer = 8;
     }
@@ -166,16 +215,22 @@ export class Fighter {
     // Crouch attacks hit lower — shift hitbox Y toward ground
     const yShift = this.crouchAttack ? 20 : 0;
 
+    // Air attacks have reduced reach (1/3 shorter) — harder to stuff jumps
+    const airW = this.grounded ? 1 : 2 / 3;
+
     // Helper: build a normal-attack hitbox from a move definition
-    const normalHB = (m) => ({
-      x: this.facing === 1
-        ? this.x + m.hitboxOffsetX
-        : this.x - m.hitboxOffsetX - m.hitboxW,
-      y: this.y + m.hitboxY + yShift,
-      w: m.hitboxW, h: m.hitboxH,
-      dmg: m.damage, kb: m.knockback,
-      isSpecial: false,
-    });
+    const normalHB = (m) => {
+      const w = Math.round(m.hitboxW * airW);
+      return {
+        x: this.facing === 1
+          ? this.x + m.hitboxOffsetX
+          : this.x - m.hitboxOffsetX - w,
+        y: this.y + m.hitboxY + yShift,
+        w, h: m.hitboxH,
+        dmg: m.damage, kb: m.knockback,
+        isSpecial: false,
+      };
+    };
 
     if (this._state === 'punch' &&
         this.timer >= moves.punch.startup &&
@@ -197,64 +252,6 @@ export class Fighter {
         this.timer <= moves.heavyKick.startup + moves.heavyKick.active && !this.didHit)
       return normalHB(moves.heavyKick);
 
-    // Special move hitbox — only for non-projectile specials during active frames
-    if (
-      this._state.startsWith('special_') &&
-      this.currentSpecial &&
-      this.currentSpecial.type !== 'projectile' &&
-      this.currentSpecial.type !== 'super_projectile'
-    ) {
-      const sp = this.currentSpecial;
-      if (
-        this.timer >= sp.startup &&
-        this.timer <= sp.startup + sp.active &&
-        !this.didHit
-      ) {
-        const offX = sp.hitboxOffsetX !== undefined ? sp.hitboxOffsetX : 8;
-        const w    = sp.hitboxW !== undefined ? sp.hitboxW : 30;
-        const h    = sp.hitboxH !== undefined ? sp.hitboxH : 16;
-        const hy   = sp.hitboxY !== undefined ? sp.hitboxY : -40;
-        return {
-          x: this.facing === 1
-            ? this.x + offX
-            : this.x - offX - w,
-          y: this.y + hy,
-          w,
-          h,
-          dmg: sp.damage,
-          kb:  2.5,
-          isSpecial: true,
-        };
-      }
-    }
-
-    // Super hitbox — command grab handled separately; rush/uppercut types get a hitbox
-    if (this._state === 'super' && this.currentSpecial) {
-      const sp = this.currentSpecial;
-      if (
-        sp.type !== 'command_grab' &&
-        sp.type !== 'super_projectile' &&
-        this.timer >= sp.startup &&
-        this.timer <= sp.startup + (sp.active || 30) &&
-        !this.didHit
-      ) {
-        const w  = sp.hitboxW !== undefined ? sp.hitboxW : 40;
-        const h  = sp.hitboxH !== undefined ? sp.hitboxH : 20;
-        const hy = sp.hitboxY !== undefined ? sp.hitboxY : -40;
-        return {
-          x: this.facing === 1
-            ? this.x + 8
-            : this.x - 8 - w,
-          y: this.y + hy,
-          w,
-          h,
-          dmg: sp.damage,
-          kb:  4.0,
-          isSpecial: true,
-        };
-      }
-    }
-
     return null;
   }
 
@@ -267,76 +264,6 @@ export class Fighter {
        this._state === 'crouchFinish') &&
       this.stunTimer <= 0
     );
-  }
-
-  // --- Special input detection ---
-
-  // Returns true when the special's motion + correct button are present.
-  checkSpecialInput(special, inp) {
-    const pi = this.playerIdx;
-    // Any punch or heavy punch triggers punch-button specials (and same for kick)
-    if (special.button === 'punch' && !inp.punch && !inp.heavyPunch) return false;
-    if (special.button === 'kick'  && !inp.kick  && !inp.heavyKick)  return false;
-
-    switch (special.input) {
-      case 'qcf': return checkQCF(pi);
-      case 'qcb': return checkQCB(pi);
-      case 'dp':  return checkDP(pi, this.facing);
-      case 'ff':  return checkDoubleTap(pi, this.facing === 1 ? DIR_RIGHT : DIR_LEFT);
-      default:    return false;
-    }
-  }
-
-  // Super fires on plain punch press when meter >= 100 — no motion input required.
-  checkSuperInput(inp) {
-    const superMove = this.def.super;
-    if (!superMove) return false;
-    return !!(inp.punch || inp.heavyPunch);
-  }
-
-  // Activate a special move.
-  activateSpecial(special) {
-    const events = [];
-    clearMotionOnUse(this.playerIdx);
-    this.state          = 'special_' + special.id;
-    this.timer          = 0;
-    this.didHit         = false;
-    this.currentSpecial = special;
-
-    if (special.type === 'projectile') {
-      events.push({ type: 'spawn_projectile', owner: this, special });
-    } else if (special.type === 'uppercut' || special.type === 'spinning' || special.type === 'armored_dash' || special.type === 'dash_strike') {
-      // Apply a velocity burst on the fighter itself
-      if (special.liftVy !== undefined) {
-        this.vy = special.liftVy;
-        this.y -= 1;
-      }
-      if (special.vx !== undefined) {
-        this.vx = special.vx * this.facing;
-      }
-    }
-    events.push({ type: 'swing' });
-    return events;
-  }
-
-  // Activate the super move.
-  activateSuper(superMove) {
-    const events = [];
-    clearMotionOnUse(this.playerIdx);
-    this.meter          = 0;
-    this.state          = 'super';
-    this.timer          = 0;
-    this.didHit         = false;
-    this.currentSpecial = superMove;
-
-    if (superMove.type === 'super_projectile') {
-      events.push({ type: 'spawn_projectile', owner: this, special: superMove });
-    } else if (superMove.type === 'rush_super') {
-      this.vx = superMove.vx * this.facing;
-    }
-    events.push({ type: 'super_start', fighter: this, superMove });
-    events.push({ type: 'swing' });
-    return events;
   }
 
   // update() returns an array of event objects.
@@ -372,7 +299,7 @@ export class Fighter {
         if (animDone || this._state === 'block') this.state = 'idle';
       }
       if (!this.grounded) {
-        this.vy += GRAVITY;
+        this.vy += GRAVITY * (this.def.gravityScale ?? 1);
         this.y  += this.vy;
         this.x  += this.vx;
         if (this.y >= GROUND) {
@@ -388,21 +315,50 @@ export class Fighter {
     // KO — physics only, no input
     if (this._state === 'ko') {
       if (!this.grounded) {
-        this.vy += GRAVITY;
+        this.vy += GRAVITY * (this.def.gravityScale ?? 1);
         this.y  += this.vy;
         this.x  += this.vx;
         if (this.y >= GROUND) {
           this.y  = GROUND;
           this.vx = 0;
+          if (this._koBounceCount === 0) {
+            // First floor hit — freeze frame briefly, then small bounce
+            events.push({ type: 'ko_thud' });
+            this._koHoldFrames  = 8;
+            this.vy             = -3;
+            this._koBounceCount = 1;
+          } else {
+            // Second floor hit — stop and queue announcer
+            events.push({ type: 'ko_thud' });
+            this.vy                = 0;
+            this._koAnnounceTimer  = 20;
+          }
         }
       }
-      this.stepAnimation();
+      // KO announce countdown (fires after second landing)
+      if (this._koAnnounceTimer > 0) {
+        this._koAnnounceTimer--;
+        if (this._koAnnounceTimer === 0) {
+          events.push({ type: 'ko_announce' });
+        }
+      }
+      // Clamp so the full sprite stays on screen (sprite is centered on this.x)
+      const spriteHalfW = this.def.animSheets
+        ? ((this.def.animSheetCropW || 60) * (this.def.animSheetScale || 1) / (this.def.animSheetDivisor || 1)) / 2
+        : (this.def.hurtboxW || 30) / 2;
+      this.x = Math.max(WALL_L + spriteHalfW, Math.min(WALL_R - spriteHalfW, this.x));
+      // Freeze animation on first landing impact
+      if (this._koHoldFrames > 0) {
+        this._koHoldFrames--;
+      } else {
+        this.stepAnimation();
+      }
       return events;
     }
 
     // Air hit: tumble in air, floor-slam on landing
     if (this._state === 'airHit') {
-      this.vy += GRAVITY;
+      this.vy += GRAVITY * (this.def.gravityScale ?? 1);
       this.y  += this.vy;
       this.x  += this.vx;
       if (this.y >= GROUND) {
@@ -434,7 +390,7 @@ export class Fighter {
         this.didHit       = false;
         this.crouchAttack = false;
       }
-      if (!this.grounded) { this.vy += GRAVITY; this.y += this.vy; this.x += this.vx; }
+      if (!this.grounded) { this.vy += GRAVITY * (this.def.gravityScale ?? 1); this.y += this.vy; this.x += this.vx; }
       if (this.y >= GROUND) { this.y = GROUND; this.vy = 0; this.vx = 0; }
       this.stepAnimation();
       return events;
@@ -456,89 +412,12 @@ export class Fighter {
       return events;
     }
 
-    // Special move animation timer
-    if (this._state.startsWith('special_') && this.currentSpecial) {
-      this.timer++;
-      const sp    = this.currentSpecial;
-      const total = sp.startup + sp.active + sp.recovery;
-
-      // Apply continuous velocity for movement-based specials
-      if ((sp.type === 'spinning' || sp.type === 'dash_strike' || sp.type === 'armored_dash') &&
-           sp.vx !== undefined &&
-           this.timer >= sp.startup &&
-           this.timer < sp.startup + sp.active) {
-        this.x += sp.vx * this.facing;
-      }
-
-      // Apply gravity if airborne during special
-      if (!this.grounded) {
-        this.vy += GRAVITY;
-        this.y  += this.vy;
-        this.x  += this.vx;
-        if (this.y >= GROUND) {
-          this.y  = GROUND;
-          this.vx = 0;
-          this.vy = 0;
-        }
-      }
-
-      if (this.timer > total) {
-        this.state          = 'idle';
-        this.timer          = 0;
-        this.didHit         = false;
-        this.currentSpecial = null;
-        this.vx             = 0;
-      }
-      this.stepAnimation();
-      return events;
-    }
-
-    // Super animation timer
-    if (this._state === 'super' && this.currentSpecial) {
-      this.timer++;
-      const sp    = this.currentSpecial;
-      const total = (sp.startup || 0) + (sp.active || 30) + (sp.recovery || 30);
-
-      // Rush super: move toward opponent during active frames
-      if (sp.type === 'rush_super' && sp.vx !== undefined &&
-          this.timer >= sp.startup &&
-          this.timer < sp.startup + (sp.active || 30)) {
-        this.x += sp.vx * this.facing;
-      }
-
-      // Command grab: check contact range once at startup completion
-      if (sp.type === 'command_grab' && this.timer === sp.startup && !this.didHit) {
-        const dist = Math.abs(this.x - opp.x);
-        if (dist <= sp.grabRange) {
-          const grabEvents = opp.receiveDamage(sp.damage, 3.0, this, true);
-          events.push(...grabEvents);
-          this.didHit = true;
-          // Drain opponent's meter on successful grab
-          if (sp.onHitDrainMeter) {
-            opp.meter = Math.max(0, opp.meter - sp.onHitDrainMeter);
-          }
-          // Gain meter for landing the super
-          this.meter = Math.min(100, this.meter + sp.damage * 0.5);
-        }
-      }
-
-      if (this.timer > total) {
-        this.state          = 'idle';
-        this.timer          = 0;
-        this.didHit         = false;
-        this.currentSpecial = null;
-        this.vx             = 0;
-      }
-      this.stepAnimation();
-      return events;
-    }
-
     // Airborne
     if (!this.grounded) {
       // Allow left/right steering mid-air
       if (inp.left  && !inp.right) this.x -= stats.walkSpeed * 0.7;
       if (inp.right && !inp.left)  this.x += stats.walkSpeed * 0.7;
-      this.vy += GRAVITY;
+      this.vy += GRAVITY * (this.def.gravityScale ?? 1);
       this.y  += this.vy;
       this.x  += this.vx;
       if (this.y >= GROUND) {
@@ -556,6 +435,7 @@ export class Fighter {
         this.state  = airAtk;
         this.timer  = 0;
         this.didHit = false;
+        this.inputBuffer = null; this.inputBufferTimer = 0;
         events.push({ type: 'swing' });
         this.stepAnimation();
         return events;
@@ -567,36 +447,41 @@ export class Fighter {
     // Block: hold direction away from opponent OR dedicated block button
     this.blocking = inp.block || ((this.facing === 1) ? inp.left : inp.right);
 
-    // Dash detection (double-tap forward or back, grounded only)
-    if (this.canAct() && this.grounded) {
+    // Double-tap run burst — hold direction after second tap for fast walk
+    if (this.canAct() && this.grounded && this.runBurst === 0) {
       const fwdDir  = this.facing === 1 ? DIR_RIGHT : DIR_LEFT;
       const backDir = this.facing === 1 ? DIR_LEFT  : DIR_RIGHT;
-      if (isDirEdge(this.playerIdx, fwdDir) && checkDoubleTap(this.playerIdx, fwdDir)) {
-        this.state = 'dash';
-        this.timer = 0;
-        this.vx    = stats.walkSpeed * 3 * this.facing;
+      const holdFwd  = this.facing === 1 ? inp.right : inp.left;
+      const holdBack = this.facing === 1 ? inp.left  : inp.right;
+      if (isDirEdge(this.playerIdx, fwdDir) && checkDoubleTap(this.playerIdx, fwdDir) && holdFwd) {
+        this.runBurst = 30;
         clearMotionOnUse(this.playerIdx);
-      } else if (isDirEdge(this.playerIdx, backDir) && checkDoubleTap(this.playerIdx, backDir)) {
-        this.state = 'backdash';
-        this.timer = 0;
-        this.vx    = -stats.walkSpeed * 2.5 * this.facing;
+      } else if (isDirEdge(this.playerIdx, backDir) && checkDoubleTap(this.playerIdx, backDir) && holdBack) {
+        this.runBurst = 30;
         clearMotionOnUse(this.playerIdx);
       }
     }
+    if (this.runBurst > 0) this.runBurst--;
 
-    // Movement (back-walk is 20% slower than forward walk)
+    // Movement (back-walk is 50% slower than forward walk; run burst = 1.5×)
     const movingBack = (this.facing === 1) ? inp.left : inp.right;
-    const spd = movingBack ? stats.walkSpeed * 0.5 : stats.walkSpeed;
-    if (inp.left && !inp.right) {
+    const burstMult  = this.runBurst > 0 ? 2.0 : 1;
+    const spd = (movingBack ? stats.walkSpeed * 0.5 : stats.walkSpeed) * burstMult;
+    if (inp.block && this.grounded) {
+      this.state = 'block';
+    } else if (inp.left && !inp.right) {
       this.x -= spd;
       this.state = 'walk';
     } else if (inp.right && !inp.left) {
       this.x += spd;
       this.state = 'walk';
     } else if (inp.down) {
+      if (this._state !== 'crouch') events.push({ type: 'crouch_grunt', voice: this.def.voice });
       this.state = 'crouch';
     } else {
-      if (this._state === 'walk') {
+      if (this._state === 'block') {
+        this.state = 'idle';
+      } else if (this._state === 'walk') {
         // If character has a holdWalkFrame and was holding there, play finish before idle
         const holdAt = this.def.holdWalkFrame;
         if (holdAt !== undefined && this.animFrame >= holdAt) {
@@ -619,6 +504,7 @@ export class Fighter {
 
     // Jump
     if (inp.up && this.grounded) {
+      events.push({ type: 'jump_grunt', voice: this.def.voice });
       this.vy    = stats.jumpVy;
       this.y    -= 1;
       this.state = 'jump';
@@ -636,69 +522,28 @@ export class Fighter {
       this.inputBuffer = null;
     }
 
-    // Merge live input with buffered press so specials + normals can both fire from buffer
+    // Merge live input with buffered press
     const bInp = {
       ...inp,
-      punch:      inp.punch      || this.inputBuffer === 'punch',
-      heavyPunch: inp.heavyPunch || this.inputBuffer === 'heavyPunch',
-      kick:       inp.kick       || this.inputBuffer === 'kick',
-      heavyKick:  inp.heavyKick  || this.inputBuffer === 'heavyKick',
+      punch: inp.punch || this.inputBuffer === 'punch',
+      kick:  inp.kick  || this.inputBuffer === 'kick',
     };
 
-    // --- Special / Super input detection (highest priority before normals) ---
-    if (this.canAct()) {
-      // Check super first
-      if ((bInp.punch || bInp.heavyPunch || bInp.kick || bInp.heavyKick) && this.meter >= 100) {
-        if (this.def.super && this.checkSuperInput(bInp)) {
-          this.inputBuffer = null; this.inputBufferTimer = 0;
-          const superEvents = this.activateSuper(this.def.super);
-          events.push(...superEvents);
-          this.stepAnimation();
-          return events;
-        }
-      }
-
-      // Then check specials
-      if (bInp.punch || bInp.heavyPunch || bInp.kick || bInp.heavyKick) {
-        const specials = this.def.specials || [];
-        for (const special of specials) {
-          if (this.checkSpecialInput(special, bInp)) {
-            this.inputBuffer = null; this.inputBufferTimer = 0;
-            const spEvents = this.activateSpecial(special);
-            events.push(...spEvents);
-            this.stepAnimation();
-            return events;
-          }
-        }
-      }
-    }
-
-    // Normal attacks (crouchAttack flag lowers hitbox when initiated from crouch)
+    // Normal attacks — forward + button = heavy, neutral/back + button = light
+    const pressingFwd = (this.facing === 1) ? inp.right : inp.left;
     if (bInp.punch && this.canAct()) {
-      console.log(`${t()} [P${this.playerIdx + 1}] FIRE: punch (fromBuffer: ${!inp.punch})`);
+      const isHeavy = pressingFwd && this.def.moves.heavyPunch;
       this.crouchAttack = inp.down;
       this.inputBuffer = null; this.inputBufferTimer = 0;
-      this.state = 'punch'; this.timer = 0; this.didHit = false;
-      events.push({ type: 'swing' });
-    } else if (bInp.heavyPunch && this.canAct()) {
-      console.log(`${t()} [P${this.playerIdx + 1}] FIRE: heavyPunch (fromBuffer: ${!inp.heavyPunch})`);
-      this.crouchAttack = inp.down;
-      this.inputBuffer = null; this.inputBufferTimer = 0;
-      this.state = 'heavyPunch'; this.timer = 0; this.didHit = false;
-      events.push({ type: 'swing' });
+      this.state = isHeavy ? 'heavyPunch' : 'punch';
+      this.timer = 0; this.didHit = false;
     }
     if (bInp.kick && this.canAct()) {
-      console.log(`${t()} [P${this.playerIdx + 1}] FIRE: kick (fromBuffer: ${!inp.kick})`);
+      const isHeavy = pressingFwd && this.def.moves.heavyKick;
       this.crouchAttack = inp.down;
       this.inputBuffer = null; this.inputBufferTimer = 0;
-      this.state = 'kick'; this.timer = 0; this.didHit = false;
-      events.push({ type: 'swing' });
-    } else if (bInp.heavyKick && this.canAct()) {
-      console.log(`${t()} [P${this.playerIdx + 1}] FIRE: heavyKick (fromBuffer: ${!inp.heavyKick})`);
-      this.crouchAttack = inp.down;
-      this.inputBuffer = null; this.inputBufferTimer = 0;
-      this.state = 'heavyKick'; this.timer = 0; this.didHit = false;
-      events.push({ type: 'swing' });
+      this.state = isHeavy ? 'heavyKick' : 'kick';
+      this.timer = 0; this.didHit = false;
     }
 
     // Face opponent
@@ -751,6 +596,7 @@ export class Fighter {
     this.pushVx     = attacker.x > this.x ? -kb * 1.4 : kb * 1.4;
     this.comboCt++;
     this.comboTimer = 60;
+    if (this.comboCt === 5) events.push({ type: 'combo5' });
 
     // Air hit: override to tumble state
     if (!this.grounded) {
@@ -771,9 +617,10 @@ export class Fighter {
       this.vy    = -7;
       this.vx    = attacker.x > this.x ? -3 : 3;
       this.y    -= 1;
-      events.push({ type: 'ko', x: midX, y: this.y - 36 });
+      events.push({ type: 'ko', x: midX, y: this.y - 36, voice: this.def.voice, noSpark: !!attacker?.def?.telekineticAttack });
     } else {
-      events.push({ type: 'hit', x: midX, y: this.y - 36, weight });
+      const attackType = (attacker._state || '').toLowerCase().includes('kick') ? 'kick' : 'punch';
+      events.push({ type: 'hit', x: midX, y: this.y - 36, weight, attackType, noSpark: !!attacker?.def?.telekineticAttack });
     }
 
     return events;

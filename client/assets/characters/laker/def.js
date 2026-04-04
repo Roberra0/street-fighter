@@ -1,12 +1,13 @@
 export default {
   id: 'laker',
+  voice: 'male',
   displayName: 'LAKER',
   startX: 140,
   facing: 1,
   stats: {
     hp: 230,
     walkSpeed: 2.8,
-    jumpVy: -11.5,
+    jumpVy: -13.23,
     jumpVx: 2.8,
   },
   palette: {
@@ -21,7 +22,7 @@ export default {
   crouchHurtboxW: 74, crouchHurtboxH: 91,
   moves: {
     punch: {
-      startup: 1, active: 2, recovery: 1,
+      startup: 1, active: 3, recovery: 9,
       damage: 9, knockback: 2.5,
       hitboxOffsetX: 24, hitboxW: 45, hitboxY: -133, hitboxH: 26,
     },
@@ -41,42 +42,8 @@ export default {
       hitboxOffsetX: 15, hitboxW: 82, hitboxY: -70, hitboxH: 38,
     },
   },
-  specials: [
-    {
-      id: 'alley_oop',
-      input: 'qcf',
-      button: 'punch',
-      damage: 28,
-      startup: 6,
-      active: 10,
-      recovery: 12,
-      type: 'dash_strike',
-      vx: 5,
-    },
-    {
-      id: 'buzzer_beater',
-      input: 'qcb',
-      button: 'kick',
-      damage: 24,
-      startup: 8,
-      active: 20,
-      recovery: 16,
-      type: 'spinning',
-      vx: 3,
-    },
-  ],
-  super: {
-    id: 'championship_run',
-    input: 'qcf_qcf',
-    button: 'punch',
-    damage: 32,
-    meterCost: 100,
-    hits: 6,
-    vignetteText: 'CHAMPIONSHIP RUN!',
-    type: 'rush_super',
-    vx: 5,
-  },
   holdCrouchFrame: 6,  // frame 6 of 13 = fully crouched pose
+  holdBlockFrame:  23, // frame 23 of 24 = last frame
   animations: {
     idle:       { frames: 12, fps: 16, loop: true  },
     walk:       { frames: 21, fps: 26, loop: true  },
@@ -86,7 +53,7 @@ export default {
     heavyPunch: { frames: 12, fps: 60, loop: false },
     kick:       { frames: 19, fps: 60, loop: false },
     heavyKick:  { frames: 19, fps: 60, loop: false },
-    block:      { frames: 2,  fps: 8,  loop: true  },
+    block:      { frames: 24, fps: 80, loop: false },
     hit:        { frames: 2,  fps: 10, loop: false },
     airHit:     { frames: 2,  fps: 10, loop: false },
     ko:         { frames: 8,  fps: 8,  loop: false },
@@ -97,12 +64,13 @@ export default {
   animSheetCropX:   50,
   animSheetCropW:   280,
   animSheets: {
-    idle:   { src: 'assets/characters/laker/fighter_trans', cols: 4,  frameW: 122, frameH: 216, cropX: 0, cropW: 122 },
+    idle:   { src: 'assets/characters/laker/fighter_trans_idle.png', cols: 4,  frameW: 122, frameH: 216, cropX: 0, cropW: 122 },
     walk:   { src: 'assets/characters/laker/LAKER_WALK',   cols: 21, frameW: 382, frameH: 216 },
     crouch: { src: 'assets/characters/laker/LAKER_CROUCH', cols: 13, frameW: 382, frameH: 216 },
     jump:   { src: 'assets/characters/laker/LAKER_JUMP',   cols: 16, frameW: 382, frameH: 216 },
     punch:  { src: 'assets/characters/laker/LAKER_PUNCH',  cols: 12, frameW: 384, frameH: 216 },
     kick:   { src: 'assets/characters/laker/LAKER_KICK',   cols: 19, frameW: 382, frameH: 216 },
+    block:  { src: 'assets/characters/laker/laker_block.png', cols: 24, frameW: 382, frameH: 216 },
   },
   portrait: null,
 };

@@ -3,14 +3,12 @@
 import { Fighter, CHARACTERS } from './fighter.js';
 // trumpDef and obamaDef are already registered in CHARACTERS via fighter.js imports.
 import * as input    from './input.js';
-import { ctx, drawBG, setActiveBG, drawShadow, drawFighterPlaceholder, loadSpriteSheet, applyScreenShake, drawProjectiles } from './renderer.js';
+import { ctx, drawBG, setActiveBG, drawShadow, drawFighterPlaceholder, drawProjectiles, drawOverlays, loadSpriteSheet, applyScreenShake } from './renderer.js';
 import { pushApart, resolveHits, clampToWalls } from './collision.js';
 import * as audio    from './audio.js';
-import { sfxHitLight, sfxHitHeavy } from './audio.js';
 import { spawnHitSpark, spawnBlockSpark, updateParticles, drawParticles, clearParticles } from './particles.js';
-import { drawHUD, drawMessage, drawTitle, drawCharSelect, drawMapSelect, drawPauseOverlay, drawControlsOverlay, getTitleMenuIndex, menuUp, menuDown } from './ui.js';
+import { drawHUD, drawMessage, drawKOScreen, drawTitle, drawCharSelect, drawMapSelect, drawPauseOverlay, drawControlsOverlay, getTitleMenuIndex, menuUp, menuDown } from './ui.js';
 import { cpuSnapshot } from './cpu.js';
-import { runVignette, tickVignette, isVignetteActive } from './vignette.js';
 
 // ---- Constants ----
 const TICK_MS = 1000 / 60; // ~16.667ms per tick
@@ -27,18 +25,48 @@ let roundTicks = 0;   // 60 ticks = 1 second
 let p1Wins = 0, p2Wins = 0, roundNum = 1;
 
 // ---- Character select state ----
-const CHAR_IDS = ['ryu', 'trump', 'obama', 'nene', 'laker', 'lady_kickboxer', 'dread', 'skater', 'tech_bro'];
+const CHAR_IDS = ['altman', 'zuck', 'jacked_jeff', 'jensen', 'skinny_jeff', 'laker', 'lady_kickboxer', 'dread', 'skater', 'tech_bro', 'random'];
+const CS_ROW_SIZES = [4, 4, 3];
+// Precompute row start indices
+const CS_ROW_STARTS = CS_ROW_SIZES.reduce((acc, s, i) => {
+  acc.push(i === 0 ? 0 : acc[i - 1] + CS_ROW_SIZES[i - 1]); return acc;
+}, []);
+
+function csGridNav(idx, dir) {
+  let row = 0;
+  for (let r = 0; r < CS_ROW_SIZES.length; r++)
+    if (idx >= CS_ROW_STARTS[r] && idx < CS_ROW_STARTS[r] + CS_ROW_SIZES[r]) { row = r; break; }
+  const col = idx - CS_ROW_STARTS[row];
+  let next = idx;
+  if (dir === 'left')  next = CS_ROW_STARTS[row] + Math.max(0, col - 1);
+  if (dir === 'right') next = CS_ROW_STARTS[row] + Math.min(CS_ROW_SIZES[row] - 1, col + 1);
+  if (dir === 'up' || dir === 'down') {
+    const nextRow = dir === 'up' ? Math.max(0, row - 1) : Math.min(CS_ROW_SIZES.length - 1, row + 1);
+    const clampedCol = Math.min(col, CS_ROW_SIZES[nextRow] - 1);
+    next = CS_ROW_STARTS[nextRow] + clampedCol;
+  }
+  return Math.min(next, CHAR_IDS.length - 1);
+}
+
+// Resolve RANDOM slot to a real character index (0–4)
+function resolveRandom(idx) {
+  return CHAR_IDS[idx] === 'random'
+    ? Math.floor(Math.random() * (CHAR_IDS.length - 1))
+    : idx;
+}
+
 let p1SelIdx    = 0;   // index into CHAR_IDS
 let p2SelIdx    = 1;
 let p1Confirmed = false;
 let p2Confirmed = false;
+let charSelectDelay = 0; // ticks to wait after both confirmed before map screen
 
 // ---- Map definitions ----
 const MAP_DEFS = [
-  { id: 'bk',     name: 'BROOKLYN',      src: 'assets/maps/BK_Map.png' },
-  { id: 'dc',     name: 'WASHINGTON DC', src: 'assets/maps/DC_map.png' },
-  { id: 'sf',     name: 'SAN FRANCISCO', src: 'assets/maps/SF_Map.png' },
-  { id: 'philly', name: 'PHILLY',        src: 'assets/maps/philly_map.png' },
+  { id: 'sf',     name: 'SAN FRANCISCO', src: 'assets/maps/SF_Map.png',     city: { fx: 0.104, fy: 0.425 } },
+  { id: 'bk',     name: 'BROOKLYN',      src: 'assets/maps/BK_Map.png',     city: { fx: 0.840, fy: 0.394 } },
+  { id: 'dc',     name: 'WASHINGTON DC', src: 'assets/maps/DC_map.png',     city: { fx: 0.802, fy: 0.477 }, labelBelow: true },
+  { id: 'philly', name: 'PHILLY',        src: 'assets/maps/philly_map.png', city: { fx: 0.815, fy: 0.415 }, labelLeft: true },
 ];
 MAP_DEFS.forEach(m => { const img = new Image(); img.src = m.src; m._img = img; });
 
@@ -47,17 +75,20 @@ let mapSelIdx = 0;
 
 // ---- Menu navigation cooldown (frames) — prevents moving too fast ----
 let menuNavCooldown = 0;
-const MENU_NAV_DELAY = 12; // ~200ms between steps
+const MENU_NAV_DELAY = 7; // ~117ms between steps
 
 // ---- Render state ----
 // (never snapshotted — decoration only)
 let freezeTimer  = 0;
+let projectiles  = [];
 let screenShake  = 0;
 let msgText      = '';
 let msgTimer     = 0;
-
-// ---- Projectile system ----
-let projectiles = [];
+// Ghost HP for damage trail — render-side only, lerped toward actual hp
+let p1GhostHP = null;
+let p2GhostHP = null;
+// KO door-slide animation frame (null = inactive)
+let koSlideFrame = null;
 
 // ---- UI overlay state ----
 let paused       = false;
@@ -77,6 +108,11 @@ loadSpriteSheet(CHARACTERS['lady_kickboxer']);
 loadSpriteSheet(CHARACTERS['dread']);
 loadSpriteSheet(CHARACTERS['skater']);
 loadSpriteSheet(CHARACTERS['tech_bro']);
+loadSpriteSheet(CHARACTERS['zuck']);
+loadSpriteSheet(CHARACTERS['altman']);
+loadSpriteSheet(CHARACTERS['jacked_jeff']);
+loadSpriteSheet(CHARACTERS['jensen']);
+loadSpriteSheet(CHARACTERS['skinny_jeff']);
 
 let p1 = new Fighter(ryuDef,  0);
 let p2 = new Fighter(neneDef, 1);
@@ -164,12 +200,20 @@ function tick(inputOverrides = null) {
     p1.feedInputBuffer(i1);
     if (gameMode !== '1p') p2.feedInputBuffer(i2);
     msgTimer--;
-    if (msgTimer === 40) msgText = 'FIGHT!';
+    if (msgTimer === 40) { msgText = 'FIGHT!'; audio.sfxRoundFight(); }
     if (msgTimer <= 0)   { msgText = ''; gameState = 'fight'; }
     return;
   }
 
   if (gameState === 'fight') {
+    // Play whoosh immediately on button press — before fighter state checks
+    if (i1.punch) audio.sfxPunchSwing();
+    if (i1.kick)  audio.sfxKickSwing();
+    if (gameMode !== '1p') {
+      if (i2.punch) audio.sfxPunchSwing();
+      if (i2.kick)  audio.sfxKickSwing();
+    }
+
     const events1 = p1.update(i1, p2);
     const events2 = p2.update(i2, p1);
 
@@ -177,11 +221,12 @@ function tick(inputOverrides = null) {
     clampToWalls(p1);
     clampToWalls(p2);
 
+    spawnProjectile(p1, 0);
+    spawnProjectile(p2, 1);
+    updateProjectiles();
+
     const hitEvents1 = resolveHits(p1, p2);
     const hitEvents2 = resolveHits(p2, p1);
-
-    // Update projectiles
-    updateProjectiles();
 
     // Tick round timer — 60 ticks = 1 second
     roundTicks++;
@@ -199,8 +244,9 @@ function tick(inputOverrides = null) {
   if (gameState === 'roundEnd') {
     // Allow physics to continue during round end (fighters settle)
     const noInp = { left: false, right: false, up: false, down: false, punch: false, kick: false, block: false };
-    p1.update(noInp, p2);
-    p2.update(noInp, p1);
+    const reEvents1 = p1.update(noInp, p2);
+    const reEvents2 = p2.update(noInp, p1);
+    processEvents([...reEvents1, ...reEvents2]);
 
     msgTimer--;
     if (msgTimer <= 0) {
@@ -225,69 +271,79 @@ function tick(inputOverrides = null) {
   }
 }
 
-// ---- Projectile update ----
+// ---- Projectile system ----
+function spawnProjectile(fighter, ownerId) {
+  const proj = fighter.def.projectile;
+  if (!proj || !proj._imgs) return;
+  const startup = fighter.def.moves.punch.startup;
+  if (fighter.state !== 'punch' || fighter.timer !== startup) return;
+  // Pick next image in cycle
+  const img = proj._imgs[proj._idx % proj._imgs.length];
+  proj._idx = (proj._idx + 1) % proj._imgs.length;
+  projectiles.push({
+    x:          fighter.x + fighter.facing * proj.spawnOffsetX,
+    y:          fighter.y + proj.spawnOffsetY,
+    vx:         fighter.facing * proj.speed,
+    startX:     fighter.x,
+    maxRange:   proj.maxRange,
+    angle:      0,
+    angleSpeed: proj.angleSpeed * fighter.facing,
+    img,
+    w:          proj.w,
+    h:          proj.h,
+    damage:     proj.damage,
+    knockback:  proj.knockback,
+    gravity:    proj.gravity || 0,
+    vy:         0,
+    owner:      fighter,
+    ownerId,
+    active:     true,
+  });
+}
+
 function updateProjectiles() {
-  const toRemove = [];
-
-  for (let i = 0; i < projectiles.length; i++) {
-    const proj = projectiles[i];
-
-    // Move projectile
-    proj.x += proj.vx;
-
-    // Age it
-    proj.life--;
-
-    // Remove if off-screen or expired
-    if (proj.life <= 0 || proj.x < 0 || proj.x > GW) {
-      toRemove.push(i);
+  for (const proj of projectiles) {
+    if (!proj.active) continue;
+    if (proj.gravity) {
+      proj.vy = (proj.vy || 0) + proj.gravity;
+      proj.y += proj.vy;
+      if (proj.y >= GROUND) { proj.active = false; continue; }
+    }
+    proj.x     += proj.vx;
+    proj.angle += proj.angleSpeed;
+    if (Math.abs(proj.x - proj.startX) >= proj.maxRange || proj.x < 0 || proj.x > 640) {
+      proj.active = false;
       continue;
     }
-
-    // Determine the opponent for this projectile
-    const opponent = proj.owner === p1 ? p2 : p1;
-
-    // Skip if opponent is already KO'd
-    if (opponent.hp <= 0) continue;
-
-    // Collision check — projectile rect vs opponent hurtbox
-    const hb = opponent.hurtbox();
-    const px = proj.x - proj.w / 2;
-    const py = proj.y - proj.h / 2;
-
-    const overlaps =
-      px < hb.x + hb.w &&
-      px + proj.w > hb.x &&
-      py < hb.y + hb.h &&
-      py + proj.h > hb.y;
-
-    if (overlaps) {
-      // Deal damage — velocity direction from projectile's vx sign
-      const hitDir = proj.vx > 0 ? 1 : -1;
-      const dmgEvents = opponent.receiveDamage(proj.dmg, 2.5, proj.owner, true);
-      processEvents(dmgEvents);
-      toRemove.push(i);
+    const target = proj.ownerId === 0 ? p2 : p1;
+    const hw = target.def.hurtboxW / 2;
+    const hh = target.def.hurtboxH;
+    if (proj.x > target.x - hw && proj.x < target.x + hw &&
+        proj.y > target.y - hh && proj.y < target.y) {
+      const events = target.receiveDamage(proj.damage, proj.knockback, proj.owner, false);
+      processEvents(events);
+      proj.active = false;
     }
   }
-
-  // Remove in reverse order so indexes stay valid
-  for (let i = toRemove.length - 1; i >= 0; i--) {
-    projectiles.splice(toRemove[i], 1);
-  }
+  projectiles = projectiles.filter(p => p.active);
 }
 
 // ---- Round management ----
 function startRound() {
   p1.reset();
   p2.reset();
-  projectiles = [];
   roundTimer = 99;
   roundTicks = 0;
   clearParticles();
-  gameState  = 'intro';
-  msgText    = 'ROUND ' + roundNum;
-  msgTimer   = 90;
-  audio.sfxRound();
+  projectiles  = [];
+  gameState    = 'intro';
+  msgText      = 'ROUND ' + roundNum;
+  msgTimer     = 90;
+  p1GhostHP    = null;
+  p2GhostHP    = null;
+  koSlideFrame = null;
+  audio.playFightMusic();
+  audio.sfxRoundAnnounce(roundNum);
 }
 
 function startMatch() {
@@ -300,13 +356,15 @@ function startMatch() {
 function checkRoundEnd() {
   if (p1.hp <= 0 || p2.hp <= 0 || roundTimer <= 0) {
     gameState = 'roundEnd';
-    msgTimer  = 150;
+    msgTimer  = 240;
     if (p1.hp <= 0) {
       p2Wins++;
       msgText = p2.tookDamage ? 'K.O.!' : 'PERFECT!';
+      if (!p2.tookDamage) audio.sfxPerfect();
     } else if (p2.hp <= 0) {
       p1Wins++;
       msgText = p1.tookDamage ? 'K.O.!' : 'PERFECT!';
+      if (!p1.tookDamage) audio.sfxPerfect();
     } else if (p1.hp > p2.hp) {
       p1Wins++;
       msgText = 'TIME!';
@@ -323,26 +381,26 @@ function checkRoundEnd() {
 // Fires audio and spawns particles from events returned by Fighter.update() / receiveDamage().
 function processEvents(events) {
   for (const ev of events) {
-    if (ev.type === 'swing') {
-      audio.sfxSwing();
-    }
     if (ev.type === 'hit') {
+      // Play punch or kick hit sound based on attack type
+      if (ev.attackType === 'kick') {
+        audio.sfxKickHit();
+      } else {
+        audio.sfxPunchHit();
+      }
       // Vary freeze and shake by hit weight
       if (ev.weight === 'light') {
-        sfxHitLight();
         freezeTimer = 4;
         screenShake = 0;
       } else if (ev.weight === 'heavy') {
-        sfxHitHeavy();
         freezeTimer = 8;
         screenShake = 4;
       } else {
         // special weight
-        sfxHitHeavy();
         freezeTimer = 7;
         screenShake = 6;
       }
-      spawnHitSpark(ev.x, ev.y);
+      if (!ev.noSpark) spawnHitSpark(ev.x, ev.y);
     }
     if (ev.type === 'block') {
       audio.sfxBlock();
@@ -350,33 +408,27 @@ function processEvents(events) {
       spawnBlockSpark(ev.x, ev.y);
     }
     if (ev.type === 'ko') {
-      audio.sfxKO();
+      audio.sfxFighterKO(ev.voice);
       screenShake = 14;
       freezeTimer = 20;
-      spawnHitSpark(ev.x, ev.y);
+      if (!ev.noSpark) spawnHitSpark(ev.x, ev.y);
+      koSlideFrame = 0;
     }
-    if (ev.type === 'spawn_projectile') {
-      const sp = ev.special;
-      projectiles.push({
-        x:     ev.owner.x + (ev.owner.facing * 20),
-        y:     ev.owner.y - 35,
-        vx:    sp.speed * ev.owner.facing,
-        w:     sp.hitboxW,
-        h:     sp.hitboxH,
-        dmg:   sp.damage,
-        owner: ev.owner,
-        life:  120, // frames before disappearing
-        charId: ev.owner.def.id,
-        isSuper: sp.type === 'super_projectile',
-      });
+    if (ev.type === 'ko_thud') {
+      audio.sfxKOThud();
+      screenShake = Math.max(screenShake, 6);
     }
-    if (ev.type === 'super_start') {
-      // Trigger vignette — freezeTimer covers the full 36-frame vignette + margin
-      runVignette(ev.fighter.def, () => {
-        // Resume is implicit — super state is already set on the fighter
-      });
-      screenShake = 8;
-      freezeTimer = 42; // 36 vignette frames + 6 frame margin
+    if (ev.type === 'ko_announce') {
+      audio.sfxKOAnnounce();
+    }
+    if (ev.type === 'jump_grunt') {
+      audio.sfxJump(ev.voice);
+    }
+    if (ev.type === 'crouch_grunt') {
+      audio.sfxCrouch(ev.voice);
+    }
+    if (ev.type === 'combo5') {
+      audio.sfxCombo5();
     }
   }
 }
@@ -394,14 +446,17 @@ function render(renderTime) {
     if (input.isMenuUp())   menuUp();
     if (input.isMenuDown()) menuDown();
     if (input.isMenuConfirm()) {
-      gameMode    = getTitleMenuIndex() === 0 ? '1p' : '2p';
+      gameMode    = '1p';
       audio.initAudio();
+      audio.sfxConfirmation();
+      audio.playMusic('assets/audio/music/intro.mp3');
       // Go to character select
-      p1SelIdx    = 0;
-      p2SelIdx    = 1;
-      p1Confirmed = false;
-      p2Confirmed = false;
-      gameState       = 'charSelect';
+      p1SelIdx         = 0;
+      p2SelIdx         = 1;
+      p1Confirmed      = false;
+      p2Confirmed      = false;
+      charSelectDelay  = 0;
+      gameState        = 'charSelect';
       menuNavCooldown = MENU_NAV_DELAY;
       input.clearFrame(); // prevent this Enter from immediately confirming in charSelect
     }
@@ -411,27 +466,43 @@ function render(renderTime) {
 
   if (gameState === 'charSelect') {
     if (menuNavCooldown > 0) menuNavCooldown--;
-    // Navigation — arrow keys, processed once per rAF with cooldown
+    // ESC: deselect P1 confirm first, then back to title
+    if (input.isEscapeKey()) {
+      if (p1Confirmed) {
+        p1Confirmed     = false;
+        p2Confirmed     = false;
+        charSelectDelay = 0;
+      } else {
+        gameState = 'title';
+        menuNavCooldown = MENU_NAV_DELAY;
+        input.clearFrame();
+      }
+    }
+    // Navigation — arrow keys (2D grid), processed once per rAF with cooldown
     if (!p1Confirmed) {
-      if (menuNavCooldown === 0 && input.isMenuLeft())  { p1SelIdx = (p1SelIdx + CHAR_IDS.length - 1) % CHAR_IDS.length; menuNavCooldown = MENU_NAV_DELAY; }
-      if (menuNavCooldown === 0 && input.isMenuRight()) { p1SelIdx = (p1SelIdx + 1) % CHAR_IDS.length; menuNavCooldown = MENU_NAV_DELAY; }
-      if (input.isMenuConfirm()) p1Confirmed = true;
-    } else if (gameMode === '2p' && !p2Confirmed) {
-      if (menuNavCooldown === 0 && input.isMenuLeft())  { p2SelIdx = (p2SelIdx + CHAR_IDS.length - 1) % CHAR_IDS.length; menuNavCooldown = MENU_NAV_DELAY; }
-      if (menuNavCooldown === 0 && input.isMenuRight()) { p2SelIdx = (p2SelIdx + 1) % CHAR_IDS.length; menuNavCooldown = MENU_NAV_DELAY; }
-      if (input.isMenuConfirm()) p2Confirmed = true;
+      if (menuNavCooldown === 0 && input.isMenuLeft())  { p1SelIdx = csGridNav(p1SelIdx, 'left');  menuNavCooldown = MENU_NAV_DELAY; audio.sfxScroll(); }
+      if (menuNavCooldown === 0 && input.isMenuRight()) { p1SelIdx = csGridNav(p1SelIdx, 'right'); menuNavCooldown = MENU_NAV_DELAY; audio.sfxScroll(); }
+      if (menuNavCooldown === 0 && input.isMenuUp())    { p1SelIdx = csGridNav(p1SelIdx, 'up');    menuNavCooldown = MENU_NAV_DELAY; audio.sfxScroll(); }
+      if (menuNavCooldown === 0 && input.isMenuDown())  { p1SelIdx = csGridNav(p1SelIdx, 'down');  menuNavCooldown = MENU_NAV_DELAY; audio.sfxScroll(); }
+      if (input.isMenuConfirm()) { p1SelIdx = resolveRandom(p1SelIdx); p1Confirmed = true; audio.sfxConfirmation(); }
+    } else if (!p2Confirmed) {
+      // 1P: P1 picks CPU's character. 2P: second player picks.
+      if (menuNavCooldown === 0 && input.isMenuLeft())  { p2SelIdx = csGridNav(p2SelIdx, 'left');  menuNavCooldown = MENU_NAV_DELAY; audio.sfxScroll(); }
+      if (menuNavCooldown === 0 && input.isMenuRight()) { p2SelIdx = csGridNav(p2SelIdx, 'right'); menuNavCooldown = MENU_NAV_DELAY; audio.sfxScroll(); }
+      if (menuNavCooldown === 0 && input.isMenuUp())    { p2SelIdx = csGridNav(p2SelIdx, 'up');    menuNavCooldown = MENU_NAV_DELAY; audio.sfxScroll(); }
+      if (menuNavCooldown === 0 && input.isMenuDown())  { p2SelIdx = csGridNav(p2SelIdx, 'down');  menuNavCooldown = MENU_NAV_DELAY; audio.sfxScroll(); }
+      if (input.isMenuConfirm()) { p2SelIdx = resolveRandom(p2SelIdx); p2Confirmed = true; audio.sfxConfirmation(); }
     }
-    // 1P: CPU picks random as soon as P1 confirms
-    if (gameMode === '1p' && p1Confirmed && !p2Confirmed) {
-      p2SelIdx    = Math.floor(Math.random() * CHAR_IDS.length);
-      p2Confirmed = true;
-    }
-    // Once both confirmed → go to map select
+    // Once both confirmed → wait 1 second then go to map select
     if (p1Confirmed && p2Confirmed) {
-      mapSelIdx       = 0;
-      gameState       = 'mapSelect';
-      menuNavCooldown = MENU_NAV_DELAY;
-      input.clearFrame();
+      if (charSelectDelay === 0) charSelectDelay = 60;
+      charSelectDelay--;
+      if (charSelectDelay === 0) {
+        mapSelIdx       = 0;
+        gameState       = 'mapSelect';
+        menuNavCooldown = MENU_NAV_DELAY;
+        input.clearFrame();
+      }
     }
     drawCharSelect(ctx, drawBG, renderTime, {
       p1SelIdx, p2SelIdx, p1Confirmed, p2Confirmed, gameMode,
@@ -441,9 +512,19 @@ function render(renderTime) {
 
   if (gameState === 'mapSelect') {
     if (menuNavCooldown > 0) menuNavCooldown--;
-    if (menuNavCooldown === 0 && input.isMenuLeft())  { mapSelIdx = (mapSelIdx + MAP_DEFS.length - 1) % MAP_DEFS.length; menuNavCooldown = MENU_NAV_DELAY; }
-    if (menuNavCooldown === 0 && input.isMenuRight()) { mapSelIdx = (mapSelIdx + 1) % MAP_DEFS.length; menuNavCooldown = MENU_NAV_DELAY; }
+    // ESC: back to char select (reset confirms so both players re-pick)
+    if (input.isEscapeKey()) {
+      p1Confirmed      = false;
+      p2Confirmed      = false;
+      charSelectDelay  = 0;
+      gameState        = 'charSelect';
+      menuNavCooldown  = MENU_NAV_DELAY;
+      input.clearFrame();
+    }
+    if (menuNavCooldown === 0 && input.isMenuLeft())  { mapSelIdx = (mapSelIdx + MAP_DEFS.length - 1) % MAP_DEFS.length; menuNavCooldown = MENU_NAV_DELAY; audio.sfxScroll(); }
+    if (menuNavCooldown === 0 && input.isMenuRight()) { mapSelIdx = (mapSelIdx + 1) % MAP_DEFS.length; menuNavCooldown = MENU_NAV_DELAY; audio.sfxScroll(); }
     if (input.isMenuConfirm()) {
+      audio.sfxConfirmation();
       setActiveBG(MAP_DEFS[mapSelIdx]._img);
       const d1 = CHARACTERS[CHAR_IDS[p1SelIdx]];
       const d2 = CHARACTERS[CHAR_IDS[p2SelIdx]];
@@ -458,20 +539,31 @@ function render(renderTime) {
     return;
   }
 
-  // Match end — check for restart (return to char select)
+  // Match end — Enter: char select  |  Escape: title
   if (gameState === 'matchEnd' && msgTimer <= -30) {
     if (input.isMenuConfirm()) {
       audio.initAudio();
+      audio.playMusic('assets/audio/music/intro.mp3');
       p1SelIdx    = 0;
       p2SelIdx    = 1;
       p1Confirmed = false;
       p2Confirmed = false;
       gameState   = 'charSelect';
     }
+    if (input.isEscapeKey()) {
+      audio.playMusic('assets/audio/music/intro.mp3');
+      gameState = 'title';
+    }
   }
 
   // Update particles (render-side only)
   updateParticles();
+
+  // Update ghost HP (render-side damage trail, lerps toward actual hp)
+  if (p1GhostHP === null) p1GhostHP = p1.hp;
+  if (p2GhostHP === null) p2GhostHP = p2.hp;
+  p1GhostHP = p1GhostHP > p1.hp ? Math.max(p1.hp, p1GhostHP - 0.5) : p1.hp;
+  p2GhostHP = p2GhostHP > p2.hp ? Math.max(p2.hp, p2GhostHP - 0.5) : p2.hp;
 
   // Draw frame
   ctx.save();
@@ -482,21 +574,24 @@ function render(renderTime) {
   drawShadow(p2);
   drawFighterPlaceholder(p1, renderTime);
   drawFighterPlaceholder(p2, renderTime);
-  drawProjectiles(ctx, projectiles);
+  drawOverlays(p1, p2, renderTime);
+  drawProjectiles(projectiles);
   drawParticles(ctx);
-  drawHUD(ctx, { p1, p2, p1Wins, p2Wins, roundTimer, roundNum });
-  drawMessage(ctx, msgText);
+  drawHUD(ctx, { p1, p2, p1Wins, p2Wins, roundTimer, roundNum, renderTime, p1GhostHP, p2GhostHP });
+  // Suppress text message while KO door-slide is running
+  if (koSlideFrame === null) drawMessage(ctx, msgText);
 
   ctx.restore();
+
+  // KO door-slide renders outside screen shake transform
+  if (koSlideFrame !== null) {
+    koSlideFrame = drawKOScreen(ctx, koSlideFrame);
+  }
 
   // Debug input display (bottom-left corner, fight state only)
   if (gameState === 'fight' || gameState === 'roundEnd') {
     drawDebugInput(ctx, debugInp, p1);
   }
-
-  // Vignette draws on top of everything — called after ctx.restore() so the
-  // screen-shake transform does not affect the overlay geometry.
-  tickVignette();
 
   // Pause toggle (1P only, during fight)
   if (gameMode === '1p' && gameState === 'fight' && input.isPauseKey()) {
@@ -508,6 +603,9 @@ function render(renderTime) {
     gameState = 'title';
   }
   if (paused) drawPauseOverlay(ctx);
+
+  // Debug overlay toggle (I key)
+  if (input.isDebugKey()) showDebug = !showDebug;
 
   // Controls overlay (any state, Tab to toggle)
   if (input.isTabKey()) showControls = !showControls;
@@ -532,10 +630,10 @@ function drawDebugInput(ctx, inp, fighter) {
     { label: '↑',  on: inp.up },
     { label: '↓',  on: inp.down },
     { label: 'A',  on: inp.punch      || debugFlash.punch      > 0 },
-    { label: 'S',  on: inp.heavyPunch || debugFlash.heavyPunch > 0 },
-    { label: 'Z',  on: inp.kick       || debugFlash.kick       > 0 },
-    { label: 'X',  on: inp.heavyKick  || debugFlash.heavyKick  > 0 },
-    { label: 'C',  on: inp.block      || debugFlash.block      > 0 },
+    { label: 'A↑', on: inp.heavyPunch || debugFlash.heavyPunch > 0 },
+    { label: 'S',  on: inp.kick       || debugFlash.kick       > 0 },
+    { label: 'S↑', on: inp.heavyKick  || debugFlash.heavyKick  > 0 },
+    { label: 'X',  on: inp.block      || debugFlash.block      > 0 },
   ];
 
   let cx = x;
@@ -601,8 +699,9 @@ function _debugSheetName(f) {
   const key =
     (s === 'heavyPunch' || s.startsWith('special_') || s === 'super') ? 'punch' :
     s === 'heavyKick' ? 'kick' :
+    s === 'crouchFinish' ? 'crouch' :
     (s === 'hit' || s === 'airHit' || s === 'block' ||
-     s === 'ko'  || s === 'crouch' || s === 'dash' || s === 'backdash') ? 'recoil' : s;
+     s === 'ko'  || s === 'dash' || s === 'backdash') ? 'recoil' : s;
   const imgs = f.def._animSheetImages;
   const resolved = imgs[key] ? key : 'idle';
   const sheet = f.def.animSheets[resolved];

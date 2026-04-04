@@ -123,6 +123,54 @@ export function loadSpriteSheet(def) {
       def._animSheetImages[key] = img;
     }
   }
+  if (def.overlay && !def.overlay._img) {
+    const img = new Image();
+    img.src = def.overlay.src;
+    def.overlay._img = img;
+  }
+  if (def.projectile && def.projectile.srcs && !def.projectile._imgs) {
+    def.projectile._imgs = def.projectile.srcs.map(src => {
+      const img = new Image(); img.src = src; return img;
+    });
+    def.projectile._idx = 0;
+  }
+}
+
+export function drawProjectiles(projs) {
+  for (const proj of projs) {
+    if (!proj.active) continue;
+    const img = proj.img;
+    if (!img || !img.complete || img.naturalWidth === 0) continue;
+    ctx.save();
+    ctx.translate(Math.round(proj.x), Math.round(proj.y));
+    ctx.rotate(proj.angle);
+    ctx.imageSmoothingEnabled = false;
+    ctx.drawImage(img, -proj.w / 2, -proj.h / 2, proj.w, proj.h);
+    ctx.restore();
+  }
+}
+
+// Draw overlays that appear over the opponent (e.g. telekinesis effect above head).
+export function drawOverlays(p1, p2, renderTime) {
+  for (const [attacker, target] of [[p1, p2], [p2, p1]]) {
+    const ov = attacker.def.overlay;
+    if (!ov) continue;
+    if (!ov.states.includes(attacker.state)) continue;
+    const img = ov._img;
+    if (!img || !img.complete || img.naturalWidth === 0) continue;
+    const tx = Math.round(target.x);
+    const stateOffset = ov.stateOffsets?.[attacker.state] ?? (ov.offsetY || 0);
+    const ty = Math.round(target.y + stateOffset);
+    const frame = ov.cols
+      ? Math.floor((renderTime / (1000 / (ov.fps || 24))) % ov.cols)
+      : 0;
+    const sx = frame * ov.frameW;
+    ctx.save();
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.imageSmoothingEnabled = true;
+    ctx.drawImage(img, sx, 0, ov.frameW, ov.frameH, tx - ov.w / 2, ty - ov.h / 2, ov.w, ov.h);
+    ctx.restore();
+  }
 }
 
 // Dispatches to per-character draw functions based on fighter.def.id.
@@ -130,17 +178,6 @@ export function loadSpriteSheet(def) {
 export function drawFighterPlaceholder(fighter, renderTime) {
   const px = Math.round(fighter.x);
   const py = Math.round(fighter.y);
-
-  // Danger glow — drawn before the fighter so it appears behind
-  if (fighter.hp / fighter.def.stats.hp < 0.2) {
-    ctx.save();
-    ctx.globalAlpha = 0.3 + 0.2 * Math.sin(renderTime / 100);
-    ctx.fillStyle = '#ff2222';
-    ctx.beginPath();
-    ctx.ellipse(fighter.x, fighter.y - 27, 22, 35, 0, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.restore();
-  }
 
   ctx.save();
   ctx.translate(px, py);
@@ -153,10 +190,13 @@ export function drawFighterPlaceholder(fighter, renderTime) {
     const stateKey =
       (fighter.state === 'heavyPunch' || fighter.state.startsWith('special_') || fighter.state === 'super') ? 'punch' :
       fighter.state === 'heavyKick'  ? 'kick'   :
+      (fighter.state === 'block' && fighter.def.animSheets?.block) ? 'block' :
+      (fighter.state === 'ko'   && fighter.def.animSheets?.ko)    ? 'ko'    :
       (fighter.state === 'hit' || fighter.state === 'airHit' || fighter.state === 'block' ||
        fighter.state === 'ko'  || fighter.state === 'dash' ||
        fighter.state === 'backdash') ? 'recoil' :
-      fighter.state === 'walkFinish' ? 'walk'   :
+      fighter.state === 'walkFinish'   ? 'walk'   :
+      fighter.state === 'crouchFinish' ? 'crouch' :
       fighter.state;
     const imgs    = fighter.def._animSheetImages;
     const sheet   = fighter.def.animSheets[stateKey] || fighter.def.animSheets.idle;
@@ -166,17 +206,24 @@ export function drawFighterPlaceholder(fighter, renderTime) {
       const fh      = sheet.frameH;
       const cols    = sheet.cols;
       const div     = fighter.def.animSheetDivisor || 1;
+      const scaleX  = fighter.def.animSheetScale  || 1;
+      const scaleY  = fighter.def.animSheetScaleY !== undefined ? fighter.def.animSheetScaleY : scaleX;
       const cropX   = sheet.cropX !== undefined ? sheet.cropX : (fighter.def.animSheetCropX !== undefined ? fighter.def.animSheetCropX : 0);
       const cropW   = sheet.cropW !== undefined ? sheet.cropW : (fighter.def.animSheetCropW !== undefined ? fighter.def.animSheetCropW : fw);
-      const destW   = cropW / div;
-      const destH   = fh / div;
-      const offsetY = (fighter.def.animSheetOffsetY || 0) / div;
-      const f       = fighter.animFrame;
+      const cropY   = sheet.cropY !== undefined ? sheet.cropY : (fighter.def.animSheetCropY !== undefined ? fighter.def.animSheetCropY : 0);
+      const cropH   = fh - cropY;
+      const destW   = (cropW / div) * scaleX;
+      const destH   = (cropH / div) * scaleY;
+      const offsetY = ((fighter.def.animSheetOffsetY || 0) / div) * scaleY;
+      const animDef = fighter.def.animations?.[stateKey];
+      const seq     = animDef?.frameSequence;
+      const f       = seq ? seq[Math.min(fighter.animFrame, seq.length - 1)] : fighter.animFrame + (sheet.frameOffset || 0);
       const col     = f % cols;
       const row     = Math.floor(f / cols);
       ctx.imageSmoothingEnabled = false;
-      ctx.drawImage(img, col * fw + cropX, row * fh, cropW, fh, -destW / 2, -destH + offsetY, destW, destH);
+      ctx.drawImage(img, col * fw + cropX, row * fh + cropY, cropW, cropH, -destW / 2, -destH + offsetY, destW, destH);
       ctx.restore();
+      drawComboCounter(fighter, px, py, renderTime);
       return;
     }
   }
@@ -251,30 +298,32 @@ export function drawFighterPlaceholder(fighter, renderTime) {
     }
   }
 
-  // Combo counter — scaled by combo count
-  if (fighter.comboCt > 1 && fighter.comboTimer > 0) {
-    const ct = fighter.comboCt;
-    let fontSize, color, yShake;
-    if (ct === 2) {
-      fontSize = 16;
-      color    = '#ffffff';
-      yShake   = 0;
-    } else if (ct === 3) {
-      fontSize = 20;
-      color    = '#ffee00';
-      yShake   = 0;
-    } else {
-      fontSize = 26;
-      color    = ct >= 6 ? '#ff2200' : '#ff8800';
-      yShake   = Math.round(Math.sin(renderTime / 60) * 2);
-    }
-    ctx.save();
-    ctx.fillStyle = color;
-    ctx.font      = `bold ${fontSize}px monospace`;
-    ctx.textAlign = 'center';
-    ctx.fillText(ct + ' HITS!', px, py - 68 + yShake);
-    ctx.restore();
+  drawComboCounter(fighter, px, py, renderTime);
+}
+
+function drawComboCounter(fighter, px, py, renderTime) {
+  if (fighter.comboCt <= 1 || fighter.comboTimer <= 0) return;
+  const ct = fighter.comboCt;
+  let fontSize, color, yShake;
+  if (ct === 2) {
+    fontSize = 16; color = '#ffffff'; yShake = 0;
+  } else if (ct === 3) {
+    fontSize = 20; color = '#ffee00'; yShake = 0;
+  } else {
+    fontSize = 26;
+    color    = ct >= 6 ? '#ff2200' : '#ff8800';
+    yShake   = Math.round(Math.sin(renderTime / 60) * 2);
   }
+  ctx.save();
+  ctx.font      = `bold ${fontSize}px monospace`;
+  ctx.textAlign = 'center';
+  // Dark outline for legibility
+  ctx.strokeStyle = '#000000';
+  ctx.lineWidth   = 3;
+  ctx.strokeText(ct + ' HITS!', px, py - 68 + yShake);
+  ctx.fillStyle = color;
+  ctx.fillText(ct + ' HITS!', px, py - 68 + yShake);
+  ctx.restore();
 }
 
 // ---- Shared helpers ----
@@ -1296,91 +1345,3 @@ export function applyScreenShake(intensity) {
   }
 }
 
-// ---- Projectile rendering ----
-// Each projectile is drawn as a glowing orb/streak with character-specific color.
-// Called after fighters, before particles, so sparks appear on top.
-export function drawProjectiles(ctx, projectiles) {
-  for (const proj of projectiles) {
-    ctx.save();
-
-    const cx = Math.round(proj.x);
-    const cy = Math.round(proj.y);
-    const rx = Math.ceil(proj.w / 2);
-    const ry = Math.ceil(proj.h / 2);
-
-    // Choose color scheme based on character and projectile type
-    let innerColor, outerColor, glowColor;
-    if (proj.isSuper) {
-      // Super projectiles: brighter, larger glow
-      if (proj.charId === 'ryu') {
-        innerColor = '#ffffff';
-        outerColor = '#4488ff';
-        glowColor  = '#0044ff44';
-      } else if (proj.charId === 'trump') {
-        innerColor = '#ffffff';
-        outerColor = '#ffcc00';
-        glowColor  = '#ffcc0044';
-      } else {
-        innerColor = '#ffffff';
-        outerColor = '#ffdd44';
-        glowColor  = '#ffdd4444';
-      }
-    } else if (proj.charId === 'ryu') {
-      // Hadouken — blue-white energy orb
-      innerColor = '#e8f4ff';
-      outerColor = '#2266cc';
-      glowColor  = '#2266cc33';
-    } else if (proj.charId === 'trump') {
-      // Wall Builder — grey brick / concrete chunk
-      innerColor = '#cccccc';
-      outerColor = '#888888';
-      glowColor  = '#88888822';
-    } else if (proj.charId === 'nene') {
-      // Wine Toss — hot pink arcing projectile
-      innerColor = '#ffe8f4';
-      outerColor = '#ff69b4';
-      glowColor  = '#ff69b433';
-    } else {
-      // Obama Filibuster streak — gold
-      innerColor = '#ffee88';
-      outerColor = '#cc9900';
-      glowColor  = '#cc990033';
-    }
-
-    // Outer glow
-    ctx.fillStyle = glowColor;
-    ctx.beginPath();
-    ctx.ellipse(cx, cy, rx + 6, ry + 6, 0, 0, Math.PI * 2);
-    ctx.fill();
-
-    // Mid ring
-    ctx.fillStyle = outerColor;
-    ctx.beginPath();
-    ctx.ellipse(cx, cy, rx + 2, ry + 2, 0, 0, Math.PI * 2);
-    ctx.fill();
-
-    // Core
-    ctx.fillStyle = innerColor;
-    ctx.beginPath();
-    ctx.ellipse(cx, cy, Math.max(2, rx - 2), Math.max(2, ry - 2), 0, 0, Math.PI * 2);
-    ctx.fill();
-
-    // Motion trail — 3 fading rects behind the projectile
-    const trailDir = proj.vx > 0 ? -1 : 1;
-    for (let t = 1; t <= 3; t++) {
-      ctx.globalAlpha = 0.25 - t * 0.07;
-      ctx.fillStyle = outerColor;
-      ctx.beginPath();
-      ctx.ellipse(
-        cx + trailDir * t * rx * 0.7,
-        cy,
-        Math.max(1, rx - t * 2),
-        Math.max(1, ry - t * 2),
-        0, 0, Math.PI * 2
-      );
-      ctx.fill();
-    }
-
-    ctx.restore();
-  }
-}

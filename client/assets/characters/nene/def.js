@@ -1,12 +1,13 @@
 export default {
   id: 'nene',
+  voice: 'female',
   displayName: 'NENE',
   startX: 320,
   facing: -1,
   stats: {
     hp: 225,         // glass cannon
     walkSpeed: 2.3,
-    jumpVy: -9.5,    // fast arc, low height
+    jumpVy: -10.93,  // fast arc, low height
     jumpVx: 2.3,
   },
   palette: {
@@ -28,7 +29,7 @@ export default {
   },
   moves: {
     punch: {
-      startup: 1, active: 2, recovery: 1, damage: 6, knockback: 1.5,
+      startup: 1, active: 3, recovery: 1, damage: 6, knockback: 1.5,
       hitboxOffsetX: 8, hitboxW: 24, hitboxY: -44, hitboxH: 10,
     },
     heavyPunch: {
@@ -43,25 +44,6 @@ export default {
       startup: 7, active: 5, recovery: 10, damage: 22, knockback: 7.5,
       hitboxOffsetX: 6, hitboxW: 38, hitboxY: -24, hitboxH: 16,
     },
-  },
-  specials: [
-    { id: 'wine_toss',   input: 'qcf', button: 'punch', damage: 22, startup: 10, active: 30, recovery: 16,
-      type: 'projectile', speed: 3, hitboxW: 14, hitboxH: 14, arcing: true },
-    { id: 'table_flip',  input: 'qcb', button: 'kick',  damage: 28, startup: 14, active: 5, recovery: 16,
-      type: 'overhead' },
-    { id: 'hair_pull',   input: 'ff',  button: 'kick',  damage: 30, startup: 8,  active: 10, recovery: 14,
-      type: 'dash_strike', vx: 4, crossUp: true },
-  ],
-  super: {
-    id: 'reality_check',
-    input: 'qcf_qcf',
-    button: 'punch',
-    damage: 32,
-    meterCost: 100,
-    hits: 8,
-    vignetteText: 'CHECK YOURSELF!',
-    type: 'rush_super',
-    vx: 4,
   },
   animations: {
     idle:   { frames: 4, fps: 8,  loop: true  },
