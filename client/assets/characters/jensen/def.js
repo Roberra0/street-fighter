@@ -1,6 +1,6 @@
 export default {
   id: 'jensen',
-  voice: 'male',
+  voiceSet: 'set_med',
   displayName: 'JENSEN',
   startX: 140,
   facing: 1,

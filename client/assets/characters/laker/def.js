@@ -1,6 +1,6 @@
 export default {
   id: 'laker',
-  voice: 'male',
+  voiceSet: 'set_med',
   displayName: 'LAKER',
   startX: 140,
   facing: 1,

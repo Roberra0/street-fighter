@@ -12,10 +12,6 @@ window.downloadAltmanLog = () => {
 };
 window.addEventListener('keydown', e => { if (e.key === 'L') window.downloadAltmanLog(); });
 
-import ryuDef   from '../assets/characters/ryu/def.js';
-import trumpDef from '../assets/characters/trump/def.js';
-import obamaDef from '../assets/characters/obama/def.js';
-import neneDef  from '../assets/characters/nene/def.js';
 import lakerDef        from '../assets/characters/laker/def.js';
 import ladyKickboxerDef from '../assets/characters/lady_kickboxer/def.js';
 import dreadDef         from '../assets/characters/dread/def.js';
@@ -26,6 +22,7 @@ import altmanDef        from '../assets/characters/sam_altman/def.js';
 import jackedJeffDef    from '../assets/characters/jacked_jeff/def.js';
 import jensenDef        from '../assets/characters/jensen/def.js';
 import skinnyJeffDef    from '../assets/characters/skinny_jeff/def.js';
+import muskDef          from '../assets/characters/musk/def.js';
 import {
   checkDoubleTap, isDirEdge,
   clearMotionOnUse,
@@ -34,10 +31,6 @@ import {
 
 // ---- Character registry ----
 export const CHARACTERS = {
-  ryu:   ryuDef,
-  trump: trumpDef,
-  obama: obamaDef,
-  nene:  neneDef,
   laker:          lakerDef,
   lady_kickboxer: ladyKickboxerDef,
   dread:          dreadDef,
@@ -48,6 +41,7 @@ export const CHARACTERS = {
   jacked_jeff:    jackedJeffDef,
   jensen:         jensenDef,
   skinny_jeff:    skinnyJeffDef,
+  musk:           muskDef,
 };
 
 // ---- Physics constants (must match game.js / collision.js) ----
@@ -476,7 +470,7 @@ export class Fighter {
       this.x += spd;
       this.state = 'walk';
     } else if (inp.down) {
-      if (this._state !== 'crouch') events.push({ type: 'crouch_grunt', voice: this.def.voice });
+      if (this._state !== 'crouch') events.push({ type: 'crouch_grunt', voiceSet: this.def.voiceSet ?? this.def.voice });
       this.state = 'crouch';
     } else {
       if (this._state === 'block') {
@@ -504,7 +498,7 @@ export class Fighter {
 
     // Jump
     if (inp.up && this.grounded) {
-      events.push({ type: 'jump_grunt', voice: this.def.voice });
+      events.push({ type: 'jump_grunt', voiceSet: this.def.voiceSet ?? this.def.voice });
       this.vy    = stats.jumpVy;
       this.y    -= 1;
       this.state = 'jump';
@@ -537,6 +531,7 @@ export class Fighter {
       this.inputBuffer = null; this.inputBufferTimer = 0;
       this.state = isHeavy ? 'heavyPunch' : 'punch';
       this.timer = 0; this.didHit = false;
+      events.push({ type: 'attack_grunt', voiceSet: this.def.voiceSet ?? this.def.voice });
     }
     if (bInp.kick && this.canAct()) {
       const isHeavy = pressingFwd && this.def.moves.heavyKick;
@@ -544,6 +539,7 @@ export class Fighter {
       this.inputBuffer = null; this.inputBufferTimer = 0;
       this.state = isHeavy ? 'heavyKick' : 'kick';
       this.timer = 0; this.didHit = false;
+      events.push({ type: 'attack_grunt', voiceSet: this.def.voiceSet ?? this.def.voice });
     }
 
     // Face opponent
@@ -596,7 +592,13 @@ export class Fighter {
     this.pushVx     = attacker.x > this.x ? -kb * 1.4 : kb * 1.4;
     this.comboCt++;
     this.comboTimer = 60;
-    if (this.comboCt === 5) events.push({ type: 'combo5' });
+    if (this.comboCt === 4) events.push({ type: 'combo4', attackerId: attacker.playerIdx });
+    if (this.comboCt === 5) events.push({ type: 'combo5', attackerId: attacker.playerIdx });
+
+    // Score award — base damage * 10, scaled by combo depth
+    const COMBO_SCORE_MULT = [0, 1, 1.5, 2, 2.5, 3];
+    const scoreAward = Math.round(actualDmg * 10 * (COMBO_SCORE_MULT[Math.min(this.comboCt, 5)] || 1));
+    const scorerId = attacker.playerIdx;
 
     // Air hit: override to tumble state
     if (!this.grounded) {
@@ -606,6 +608,7 @@ export class Fighter {
     } else {
       this.state = 'hit';
     }
+    events.push({ type: 'recoil_grunt', voiceSet: this.def.voiceSet ?? this.def.voice });
 
     // Attacker gains meter for dealing damage
     if (attacker && attacker.meter !== undefined) {
@@ -617,10 +620,10 @@ export class Fighter {
       this.vy    = -7;
       this.vx    = attacker.x > this.x ? -3 : 3;
       this.y    -= 1;
-      events.push({ type: 'ko', x: midX, y: this.y - 36, voice: this.def.voice, noSpark: !!attacker?.def?.telekineticAttack });
+      events.push({ type: 'ko', x: midX, y: this.y - 36, voiceSet: this.def.voiceSet ?? this.def.voice, noSpark: !!attacker?.def?.telekineticAttack, scoreAward, scorerId });
     } else {
       const attackType = (attacker._state || '').toLowerCase().includes('kick') ? 'kick' : 'punch';
-      events.push({ type: 'hit', x: midX, y: this.y - 36, weight, attackType, noSpark: !!attacker?.def?.telekineticAttack });
+      events.push({ type: 'hit', x: midX, y: this.y - 36, weight, attackType, noSpark: !!attacker?.def?.telekineticAttack, scoreAward, scorerId });
     }
 
     return events;

@@ -1,6 +1,6 @@
 export default {
   id: 'skater',
-  voice: 'male',
+  voiceSet: 'set_smaller',
   displayName: 'SKATER',
   startX: 140,
   facing: 1,

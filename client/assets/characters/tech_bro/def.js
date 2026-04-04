@@ -1,6 +1,6 @@
 export default {
   id: 'tech_bro',
-  voice: 'male',
+  voiceSet: 'set_2',
   displayName: 'TECH BRO',
   startX: 140,
   facing: 1,

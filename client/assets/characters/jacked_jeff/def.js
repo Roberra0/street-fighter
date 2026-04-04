@@ -1,6 +1,6 @@
 export default {
   id: 'jacked_jeff',
-  voice: 'male',
+  voiceSet: 'set_big',
   displayName: 'JACKED J',
   startX: 140,
   facing: 1,

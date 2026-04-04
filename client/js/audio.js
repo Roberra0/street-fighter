@@ -4,13 +4,16 @@ let audioCtx = null;
 const buffers = {};
 
 // --- Music ---
-let musicEl = null;
+let musicEl      = null;
 let currentTrack = null;
+let musicBaseVol = 0.4; // intended volume — tracked so duckMusic can restore correctly
 
 const FIGHT_SONGS = [
   'assets/audio/music/fight_song1.wav',
+  'assets/audio/music/fight_song2.wav',
   'assets/audio/music/fight_song3.wav',
   'assets/audio/music/fight_song4.wav',
+  'assets/audio/music/fight_song5.wav',
 ];
 
 export function playMusic(src, volume = 0.4) {
@@ -19,9 +22,17 @@ export function playMusic(src, volume = 0.4) {
   musicEl = new Audio(src);
   musicEl.loop   = true;
   musicEl.volume = volume;
+  musicBaseVol   = volume;
   musicEl.play().catch(() => {});
   currentTrack = src;
   console.log(`[audio] music: ${src}`);
+}
+
+// Duck music by 33% for durationMs then restore — used for voice-over clips
+function duckMusic(durationMs) {
+  if (!musicEl) return;
+  musicEl.volume = musicBaseVol * 0.67;
+  setTimeout(() => { if (musicEl) musicEl.volume = musicBaseVol; }, durationMs);
 }
 
 export function playFightMusic() {
@@ -42,20 +53,38 @@ const SOUND_FILES = {
   punch_hit:        'assets/audio/sfx/punch_hit.wav',
   kick_hit:         'assets/audio/sfx/kick_hit.wav',
   ko_thud:          'assets/audio/sfx/ko_thud.wav',
-  round_announce_1: 'assets/audio/voice/round_announce_1.wav',
-  round_announce_2: 'assets/audio/voice/round_announce_2.wav',
-  round_announce_3: 'assets/audio/voice/round_announce_3.wav',
-  round_fight:      'assets/audio/voice/round_fight.wav',
-  ko_announce:      'assets/audio/voice/ko_announce.wav',
-  ko_perfect:       'assets/audio/voice/ko_perfect.wav',
-  combo_5hit:       'assets/audio/voice/combo_5hit.wav',
-  male_ko:          'assets/audio/voice/fighters/male_ko.wav',
-  male_jump:        'assets/audio/voice/fighters/male_jump.wav',
-  male_crouch:      'assets/audio/voice/fighters/male_crouch.wav',
+  round_1_fight:    'assets/audio/voice/announcer/Round 1 Fight.mp3',
+  round_2_fight:    'assets/audio/voice/announcer/Round 2 Fight.mp3',
+  final_round:      'assets/audio/voice/announcer/Final round.mp3',
+  outstanding:      'assets/audio/voice/announcer/Outstanding.mp3',
+  impressive:       'assets/audio/voice/announcer/Impressive.mp3',
+  well_done:        'assets/audio/voice/announcer/Well Done.mp3',
+  fatality:         'assets/audio/voice/announcer/Fatality.mp3',
+  finish_him:       'assets/audio/voice/announcer/finish him.mp3',
+  test_luck:        'assets/audio/voice/announcer/Test Luck.mp3',
+  laugh:            'assets/audio/voice/announcer/laugh.mp3',
   female_ko:        'assets/audio/voice/fighters/female_ko.wav',
   female_jump:      'assets/audio/voice/fighters/female_jump.wav',
   female_crouch:    'assets/audio/voice/fighters/female_crouch.wav',
 };
+
+// Voice sets for male fighters — loaded dynamically
+const VOICE_SETS = ['set_big', 'set_med', 'set_smaller', 'set_1', 'set_2'];
+const VOICE_ACTIONS = ['attack', 'crouch', 'dead', 'jump', 'recoil'];
+
+async function loadVoiceSets() {
+  for (const set of VOICE_SETS) {
+    for (const action of VOICE_ACTIONS) {
+      const key  = `${set}_${action}`;
+      const path = `assets/audio/voice/sets/${set}/${action}.wav`;
+      try {
+        const res = await fetch(path);
+        const arr = await res.arrayBuffer();
+        buffers[key] = await audioCtx.decodeAudioData(arr);
+      } catch (e) {}
+    }
+  }
+}
 
 async function loadSounds() {
   for (const [key, path] of Object.entries(SOUND_FILES)) {
@@ -71,11 +100,20 @@ export function initAudio() {
   if (!audioCtx) {
     audioCtx = new (window.AudioContext || window.webkitAudioContext)();
     loadSounds();
+    loadVoiceSets();
   }
 }
 
 function playBuffer(key, vol = 1, delay = 0) {
-  if (!audioCtx || !buffers[key]) return;
+  if (!audioCtx) return;
+  console.log(`[audio] ${key}${delay ? ` (+${(delay * 1000).toFixed(0)}ms)` : ''}`);
+  // Buffer not ready yet (still loading) — fall back to HTMLAudioElement
+  if (!buffers[key]) {
+    const path = SOUND_FILES[key];
+    if (!path || delay > 0) return;
+    try { const a = new Audio(path); a.volume = vol; a.play(); } catch (e) {}
+    return;
+  }
   try {
     const src = audioCtx.createBufferSource();
     const g   = audioCtx.createGain();
@@ -84,7 +122,6 @@ function playBuffer(key, vol = 1, delay = 0) {
     src.connect(g);
     g.connect(audioCtx.destination);
     src.start(audioCtx.currentTime + delay);
-    console.log(`[audio] ${key}${delay ? ` (+${(delay * 1000).toFixed(0)}ms)` : ''}`);
   } catch (e) {}
 }
 
@@ -116,29 +153,103 @@ export function sfxKOThud()     { playBuffer('ko_thud',     1.0); }
 
 // --- Fighter voices ---
 
-export function sfxFighterKO(voice) {
-  playBuffer(voice === 'female' ? 'female_ko' : 'male_ko', 0.5);
+function playVoice(voiceSet, action, vol) {
+  if (voiceSet === 'female') {
+    playBuffer(`female_${action === 'dead' ? 'ko' : action}`, vol);
+  } else {
+    const key  = `${voiceSet}_${action}`;
+    const path = `assets/audio/voice/sets/${voiceSet}/${action}.wav`;
+    if (!audioCtx) return;
+    console.log(`[audio] ${key}`);
+    if (!buffers[key]) {
+      try { const a = new Audio(path); a.volume = vol; a.play(); } catch (e) {}
+      return;
+    }
+    try {
+      const src = audioCtx.createBufferSource();
+      const g   = audioCtx.createGain();
+      src.buffer  = buffers[key];
+      g.gain.value = vol;
+      src.connect(g);
+      g.connect(audioCtx.destination);
+      src.start();
+    } catch (e) {}
+  }
 }
 
-export function sfxJump(voice) {
-  playBuffer(voice === 'female' ? 'female_jump' : 'male_jump', 0.45);
+export function sfxFighterKO(voiceSet) {
+  if (voiceSet === 'female') { playBuffer('female_ko', 0.5); return; }
+  playVoice(voiceSet, 'dead', 0.5);
 }
 
-export function sfxCrouch(voice) {
-  playBuffer(voice === 'female' ? 'female_crouch' : 'male_crouch', 0.45);
+export function sfxJump(voiceSet) {
+  playVoice(voiceSet, 'jump', 0.45);
+}
+
+export function sfxCrouch(voiceSet) {
+  playVoice(voiceSet, 'crouch', 0.45);
+}
+
+export function sfxAttack(voiceSet) {
+  if (!voiceSet || voiceSet === 'female') return;
+  playVoice(voiceSet, 'attack', 0.45);
+}
+
+export function sfxRecoil(voiceSet) {
+  if (!voiceSet || voiceSet === 'female') return;
+  playVoice(voiceSet, 'recoil', 0.45);
 }
 
 // --- Announcer voice ---
 
 export function sfxRoundAnnounce(roundNum) {
-  const n = Math.min(Math.max(roundNum, 1), 3);
-  playBuffer(`round_announce_${n}`, 0.5);
+  if (roundNum <= 1)      playBuffer('round_1_fight', 0.65);
+  else if (roundNum <= 2) playBuffer('round_2_fight', 0.65);
+  else                    playBuffer('final_round',   0.65);
 }
 
-export function sfxRoundFight()  { playBuffer('round_fight',  0.5); }
-export function sfxKOAnnounce()  { playBuffer('ko_announce',  0.5); }
-export function sfxPerfect()     { playBuffer('ko_perfect',   0.5); }
-export function sfxCombo5()      { playBuffer('combo_5hit', 0.5); }
+// Randomly pick a KO praise clip or Fatality
+const KO_CLIPS = ['outstanding', 'impressive', 'well_done', 'fatality'];
+export function sfxKOAnnounce() {
+  playBuffer(KO_CLIPS[Math.floor(Math.random() * KO_CLIPS.length)], 0.65);
+}
+
+// Random praise on a 4-hit combo
+const PRAISE_CLIPS = ['outstanding', 'impressive', 'well_done'];
+export function sfxCombo4() {
+  playBuffer(PRAISE_CLIPS[Math.floor(Math.random() * PRAISE_CLIPS.length)], 0.65);
+}
+
+// Returns buffer duration in ms + padding, or a safe fallback if not yet decoded
+function clipMs(key) {
+  const buf = buffers[key];
+  return buf ? Math.ceil(buf.duration * 1000) + 300 : 2000;
+}
+
+export function sfxFinishHim() { playBuffer('finish_him', 0.65); }
+export function sfxTestLuck()  { duckMusic(clipMs('test_luck')); playBuffer('test_luck', 0.65); }
+
+// Plays laugh via HTMLAudio so we know when it ends, then fires callback after extraMs
+export function sfxLaughWithDelay(callback, extraMs = 0) {
+  const a = new Audio(SOUND_FILES['laugh']);
+  a.volume = 0.65;
+  a.onended = () => setTimeout(callback, extraMs);
+  a.onerror  = () => setTimeout(callback, extraMs);
+  a.play().catch(() => setTimeout(callback, extraMs));
+}
+
+// Randomly plays Well Done or Outstanding on P1 character confirm
+const CHAR_SELECT_CLIPS = ['well_done', 'outstanding'];
+export function sfxCharSelect() {
+  const key = CHAR_SELECT_CLIPS[Math.floor(Math.random() * CHAR_SELECT_CLIPS.length)];
+  duckMusic(clipMs(key));
+  playBuffer(key, 0.65);
+}
+
+// Legacy no-ops — call sites removed in game.js
+export function sfxRoundFight() {}
+export function sfxPerfect()    {}
+export function sfxCombo5()     {}
 
 // --- Synth fallbacks for sounds with no audio file ---
 

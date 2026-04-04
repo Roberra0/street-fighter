@@ -1,6 +1,6 @@
 export default {
   id: 'zuck',
-  voice: 'male',
+  voiceSet: 'set_1',
   displayName: 'ZUCK',
   startX: 140,
   facing: 1,

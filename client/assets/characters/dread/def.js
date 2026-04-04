@@ -1,6 +1,6 @@
 export default {
   id: 'dread',
-  voice: 'male',
+  voiceSet: 'set_2',
   displayName: 'DREAD',
   startX: 140,
   facing: 1,

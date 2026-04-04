@@ -1,6 +1,6 @@
 export default {
   id: 'skinny_jeff',
-  voice: 'male',
+  voiceSet: 'set_smaller',
   displayName: 'SLIM JEFF',
   startX: 140,
   facing: 1,

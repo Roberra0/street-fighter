@@ -1,13 +1,12 @@
 // game.js — main loop, state machine, fixed timestep dispatcher
 
 import { Fighter, CHARACTERS } from './fighter.js';
-// trumpDef and obamaDef are already registered in CHARACTERS via fighter.js imports.
 import * as input    from './input.js';
 import { ctx, drawBG, setActiveBG, drawShadow, drawFighterPlaceholder, drawProjectiles, drawOverlays, loadSpriteSheet, applyScreenShake } from './renderer.js';
 import { pushApart, resolveHits, clampToWalls } from './collision.js';
 import * as audio    from './audio.js';
 import { spawnHitSpark, spawnBlockSpark, updateParticles, drawParticles, clearParticles } from './particles.js';
-import { drawHUD, drawMessage, drawKOScreen, drawTitle, drawCharSelect, drawMapSelect, drawPauseOverlay, drawControlsOverlay, getTitleMenuIndex, menuUp, menuDown } from './ui.js';
+import { drawHUD, drawMessage, drawKOScreen, drawTitle, drawCharSelect, drawMapSelect, drawPauseOverlay, drawControlsOverlay, drawHighScore, drawViewScores, getTitleMenuIndex, menuUp, menuDown } from './ui.js';
 import { cpuSnapshot } from './cpu.js';
 
 // ---- Constants ----
@@ -25,8 +24,8 @@ let roundTicks = 0;   // 60 ticks = 1 second
 let p1Wins = 0, p2Wins = 0, roundNum = 1;
 
 // ---- Character select state ----
-const CHAR_IDS = ['altman', 'zuck', 'jacked_jeff', 'jensen', 'skinny_jeff', 'laker', 'lady_kickboxer', 'dread', 'skater', 'tech_bro', 'random'];
-const CS_ROW_SIZES = [4, 4, 3];
+const CHAR_IDS = ['altman', 'zuck', 'jacked_jeff', 'jensen', 'musk', 'skinny_jeff', 'laker', 'lady_kickboxer', 'dread', 'skater', 'tech_bro', 'random'];
+const CS_ROW_SIZES = [4, 4, 4];
 // Precompute row start indices
 const CS_ROW_STARTS = CS_ROW_SIZES.reduce((acc, s, i) => {
   acc.push(i === 0 ? 0 : acc[i - 1] + CS_ROW_SIZES[i - 1]); return acc;
@@ -63,19 +62,55 @@ let charSelectDelay = 0; // ticks to wait after both confirmed before map screen
 
 // ---- Map definitions ----
 const MAP_DEFS = [
-  { id: 'sf',     name: 'SAN FRANCISCO', src: 'assets/maps/SF_Map.png',     city: { fx: 0.104, fy: 0.425 } },
-  { id: 'bk',     name: 'BROOKLYN',      src: 'assets/maps/BK_Map.png',     city: { fx: 0.840, fy: 0.394 } },
-  { id: 'dc',     name: 'WASHINGTON DC', src: 'assets/maps/DC_map.png',     city: { fx: 0.802, fy: 0.477 }, labelBelow: true },
-  { id: 'philly', name: 'PHILLY',        src: 'assets/maps/philly_map.png', city: { fx: 0.815, fy: 0.415 }, labelLeft: true },
+  { id: 'sf',     name: 'SAN FRANCISCO', src: 'assets/maps/SF_Map.png',      city: { fx: 0.104, fy: 0.425 }, thumbName: 'GOLDEN GATE' },
+  { id: 'venice', name: 'VENICE',        src: 'assets/maps/Venice_map.png',  city: { fx: 0.160, fy: 0.624 }, cityName: 'LOS ANGELES', labelBelow: true },
+  { id: 'bk',     name: 'BROOKLYN',      src: 'assets/maps/BK_Map.png',      city: { fx: 0.840, fy: 0.394 }, thumbName: 'BROOKLYN BRIDGE' },
+  { id: 'philly', name: 'PHILLY',        src: 'assets/maps/philly_map.png',  city: { fx: 0.815, fy: 0.415 }, thumbName: 'INDEPENDENCE HALL' },
+  { id: 'dc',     name: 'WASHINGTON DC', src: 'assets/maps/DC_map.png',      city: { fx: 0.802, fy: 0.477 }, labelBelow: true, thumbName: 'WHITE HOUSE' },
 ];
 MAP_DEFS.forEach(m => { const img = new Image(); img.src = m.src; m._img = img; });
 
 // ---- Map select state ----
-let mapSelIdx = 0;
+let mapSelIdx    = 0;
+let mapConfirmed = false; // true while waiting for 2s laugh delay before fight
 
 // ---- Menu navigation cooldown (frames) — prevents moving too fast ----
 let menuNavCooldown = 0;
 const MENU_NAV_DELAY = 7; // ~117ms between steps
+
+// ---- Tesla sprite preload ----
+const teslaImg = new Image();
+teslaImg.src = 'assets/characters/musk/tesla_sprite.png';
+
+// ---- Zuck influencer mob sprite preload ----
+const zuckMobImg = new Image();
+zuckMobImg.src = 'assets/characters/zuck/influencer_mob.png';
+
+// ---- Score (1P mode) ----
+let p1Score = 0;
+
+// ---- High score helpers ----
+const HS_KEY = 'SFHighScores';
+const HS_MAX = 10;
+function loadHighScores() {
+  try { const r = localStorage.getItem(HS_KEY); return r ? JSON.parse(r) : []; } catch { return []; }
+}
+function saveHighScore(name, score) {
+  const arr = loadHighScores();
+  arr.push({ name, score });
+  arr.sort((a, b) => b.score - a.score);
+  localStorage.setItem(HS_KEY, JSON.stringify(arr.slice(0, HS_MAX)));
+}
+function getInsertIdx(scores, score) {
+  for (let i = 0; i < scores.length; i++) if (score > scores[i].score) return i;
+  return scores.length;
+}
+const HS_CHARS = ' ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+function nextHsChar(c) { const i = HS_CHARS.indexOf(c); return HS_CHARS[(i + 1) % HS_CHARS.length]; }
+function prevHsChar(c) { const i = HS_CHARS.indexOf(c); return HS_CHARS[(i - 1 + HS_CHARS.length) % HS_CHARS.length]; }
+
+// ---- Announcer state ----
+let finishHimFired = false; // reset each round; fires once when a fighter hits < 20% hp
 
 // ---- Render state ----
 // (never snapshotted — decoration only)
@@ -89,6 +124,15 @@ let p1GhostHP = null;
 let p2GhostHP = null;
 // KO door-slide animation frame (null = inactive)
 let koSlideFrame = null;
+// Zuck influencer mob overlay — { startTime, target } or null
+let zuckMobOverlay = null;
+
+// ---- High score screen render state ----
+let hsScores       = [];
+let hsInitials     = ['A', 'A', 'A'];
+let hsCursor       = 0;
+let hsInsertIdx    = 0;
+let hsScrollOffset = 0;
 
 // ---- UI overlay state ----
 let paused       = false;
@@ -96,13 +140,7 @@ let showControls = false;
 let showDebug    = true;
 
 // ---- Fighters ----
-// P1 = Ryu (playerIdx 0), P2 = NeNe Leakes (playerIdx 1)
-const ryuDef  = CHARACTERS['ryu'];
-const neneDef = CHARACTERS['nene'];
-
 // Preload sprite sheets for characters that have one
-loadSpriteSheet(ryuDef);
-loadSpriteSheet(CHARACTERS['obama']);
 loadSpriteSheet(CHARACTERS['laker']);
 loadSpriteSheet(CHARACTERS['lady_kickboxer']);
 loadSpriteSheet(CHARACTERS['dread']);
@@ -113,9 +151,10 @@ loadSpriteSheet(CHARACTERS['altman']);
 loadSpriteSheet(CHARACTERS['jacked_jeff']);
 loadSpriteSheet(CHARACTERS['jensen']);
 loadSpriteSheet(CHARACTERS['skinny_jeff']);
+loadSpriteSheet(CHARACTERS['musk']);
 
-let p1 = new Fighter(ryuDef,  0);
-let p2 = new Fighter(neneDef, 1);
+let p1 = new Fighter(CHARACTERS['altman'], 0);
+let p2 = new Fighter(CHARACTERS['altman'], 1);
 
 // ---- Fixed timestep accumulator ----
 let acc  = 0;
@@ -200,7 +239,8 @@ function tick(inputOverrides = null) {
     p1.feedInputBuffer(i1);
     if (gameMode !== '1p') p2.feedInputBuffer(i2);
     msgTimer--;
-    if (msgTimer === 40) { msgText = 'FIGHT!'; audio.sfxRoundFight(); }
+    if (msgTimer === 90) { msgText = 'ROUND ' + roundNum; audio.sfxRoundAnnounce(roundNum); }
+    if (msgTimer === 40) { msgText = 'FIGHT!'; }
     if (msgTimer <= 0)   { msgText = ''; gameState = 'fight'; }
     return;
   }
@@ -214,8 +254,15 @@ function tick(inputOverrides = null) {
       if (i2.kick)  audio.sfxKickSwing();
     }
 
-    const events1 = p1.update(i1, p2);
-    const events2 = p2.update(i2, p1);
+    // Freeze the mob target's movement/attacks while the influencer mob is active
+    const mobFreeze = inp => ({ ...inp, left: false, right: false, up: false,
+                                        punch: false, heavyPunch: false,
+                                        kick: false,  heavyKick: false });
+    const ei1 = (zuckMobOverlay && zuckMobOverlay.target === p1) ? mobFreeze(i1) : i1;
+    const ei2 = (zuckMobOverlay && zuckMobOverlay.target === p2) ? mobFreeze(i2) : i2;
+
+    const events1 = p1.update(ei1, p2);
+    const events2 = p2.update(ei2, p1);
 
     pushApart(p1, p2);
     clampToWalls(p1);
@@ -237,7 +284,23 @@ function tick(inputOverrides = null) {
 
     checkRoundEnd();
 
+    // Influencer mob deals light damage to the target once per second while active
+    if (zuckMobOverlay) {
+      zuckMobOverlay.mobTicks++;
+      if (zuckMobOverlay.mobTicks % 60 === 0) {
+        const mobEvents = zuckMobOverlay.target.receiveDamage(5, 1.5, zuckMobOverlay.attacker, false);
+        processEvents(mobEvents);
+      }
+    }
+
     processEvents([...events1, ...events2, ...hitEvents1, ...hitEvents2]);
+
+    // "Finish him" — fire once when either fighter drops below 20% hp
+    if (!finishHimFired) {
+      const p1Low = p1.hp > 0 && p1.hp / p1.def.stats.hp < 0.2;
+      const p2Low = p2.hp > 0 && p2.hp / p2.def.stats.hp < 0.2;
+      if (p1Low || p2Low) { audio.sfxFinishHim(); finishHimFired = true; }
+    }
     return;
   }
 
@@ -311,18 +374,28 @@ function updateProjectiles() {
     }
     proj.x     += proj.vx;
     proj.angle += proj.angleSpeed;
-    if (Math.abs(proj.x - proj.startX) >= proj.maxRange || proj.x < 0 || proj.x > 640) {
+    if (proj.cols) {
+      proj._animTick = (proj._animTick || 0) + 1;
+      if (proj._animTick >= 2) {
+        proj._animTick = 0;
+        proj._animFrame = ((proj._animFrame || 0) + 1) % proj.cols;
+      }
+    }
+    const exitX = 640 + (proj.w || 0);
+    if (Math.abs(proj.x - proj.startX) >= proj.maxRange || proj.x < proj.startX || proj.x > exitX) {
       proj.active = false;
       continue;
     }
-    const target = proj.ownerId === 0 ? p2 : p1;
-    const hw = target.def.hurtboxW / 2;
-    const hh = target.def.hurtboxH;
-    if (proj.x > target.x - hw && proj.x < target.x + hw &&
-        proj.y > target.y - hh && proj.y < target.y) {
-      const events = target.receiveDamage(proj.damage, proj.knockback, proj.owner, false);
-      processEvents(events);
-      proj.active = false;
+    if (!proj.hasHit) {
+      const target = proj.ownerId === 0 ? p2 : p1;
+      const hw = target.def.hurtboxW / 2;
+      const hh = target.def.hurtboxH;
+      if (proj.x > target.x - hw && proj.x < target.x + hw &&
+          proj.y > target.y - hh && proj.y < target.y) {
+        const events = target.receiveDamage(proj.damage, proj.knockback, proj.owner, false);
+        processEvents(events);
+        proj.hasHit = true;
+      }
     }
   }
   projectiles = projectiles.filter(p => p.active);
@@ -337,19 +410,21 @@ function startRound() {
   clearParticles();
   projectiles  = [];
   gameState    = 'intro';
-  msgText      = 'ROUND ' + roundNum;
-  msgTimer     = 90;
+  msgText      = '';          // blank for first 60 ticks (1s) before announcement
+  msgTimer     = 150;         // 60 tick lead-in + 90 original countdown
   p1GhostHP    = null;
   p2GhostHP    = null;
-  koSlideFrame = null;
+  koSlideFrame   = null;
+  zuckMobOverlay = null;
+  finishHimFired = false;
   audio.playFightMusic();
-  audio.sfxRoundAnnounce(roundNum);
 }
 
 function startMatch() {
   p1Wins  = 0;
   p2Wins  = 0;
   roundNum = 1;
+  p1Score  = 0;
   startRound();
 }
 
@@ -360,14 +435,18 @@ function checkRoundEnd() {
     if (p1.hp <= 0) {
       p2Wins++;
       msgText = p2.tookDamage ? 'K.O.!' : 'PERFECT!';
-      if (!p2.tookDamage) audio.sfxPerfect();
     } else if (p2.hp <= 0) {
       p1Wins++;
       msgText = p1.tookDamage ? 'K.O.!' : 'PERFECT!';
-      if (!p1.tookDamage) audio.sfxPerfect();
+      if (gameMode === '1p') {
+        p1Score += 200;
+        if (!p1.tookDamage) p1Score += 500;
+        p1Score += Math.floor(roundTimer) * 5;
+      }
     } else if (p1.hp > p2.hp) {
       p1Wins++;
       msgText = 'TIME!';
+      if (gameMode === '1p') { p1Score += 200 + Math.floor(roundTimer) * 5; }
     } else if (p2.hp > p1.hp) {
       p2Wins++;
       msgText = 'TIME!';
@@ -381,6 +460,9 @@ function checkRoundEnd() {
 // Fires audio and spawns particles from events returned by Fighter.update() / receiveDamage().
 function processEvents(events) {
   for (const ev of events) {
+    if ((ev.type === 'hit' || ev.type === 'ko') && ev.scoreAward && ev.scorerId === 0 && gameMode === '1p') {
+      p1Score += ev.scoreAward;
+    }
     if (ev.type === 'hit') {
       // Play punch or kick hit sound based on attack type
       if (ev.attackType === 'kick') {
@@ -408,7 +490,7 @@ function processEvents(events) {
       spawnBlockSpark(ev.x, ev.y);
     }
     if (ev.type === 'ko') {
-      audio.sfxFighterKO(ev.voice);
+      audio.sfxFighterKO(ev.voiceSet);
       screenShake = 14;
       freezeTimer = 20;
       if (!ev.noSpark) spawnHitSpark(ev.x, ev.y);
@@ -422,15 +504,122 @@ function processEvents(events) {
       audio.sfxKOAnnounce();
     }
     if (ev.type === 'jump_grunt') {
-      audio.sfxJump(ev.voice);
+      audio.sfxJump(ev.voiceSet);
     }
     if (ev.type === 'crouch_grunt') {
-      audio.sfxCrouch(ev.voice);
+      audio.sfxCrouch(ev.voiceSet);
+    }
+    if (ev.type === 'attack_grunt') {
+      audio.sfxAttack(ev.voiceSet);
+    }
+    if (ev.type === 'recoil_grunt') {
+      audio.sfxRecoil(ev.voiceSet);
+    }
+    if (ev.type === 'combo4') {
+      audio.sfxCombo4();
     }
     if (ev.type === 'combo5') {
-      audio.sfxCombo5();
+      const attacker = ev.attackerId === 0 ? p1 : p2;
+      if (attacker.def.id === 'zuck') {
+        const target = ev.attackerId === 0 ? p2 : p1;
+        zuckMobOverlay = { startTime: null, target, attacker, mobTicks: 0 };
+      }
+      if (attacker.def.id === 'musk' && !projectiles.some(p => p.img === teslaImg)) {
+        projectiles.push({
+          x: -110,
+          y: GROUND - 20,
+          vx: 9,
+          vy: 0,
+          img: teslaImg,
+          frameW: 1280, frameH: 720, cols: 1,
+          frameCropX: 155, frameCropW: 975,
+          w: 316, h: 234,
+          damage: 20,
+          knockback: 5.0,
+          angle: 0,
+          angleSpeed: 0,
+          gravity: 0,
+          startX: -110,
+          maxRange: 1200,
+          owner: attacker,
+          ownerId: ev.attackerId,
+          active: true,
+        });
+      }
     }
   }
+}
+
+// ---- Zuck influencer mob overlay ----
+// 25-frame strip (1792×720 each), spread evenly across 3s in front of the opponent.
+const ZUCK_MOB_COLS      = 25;
+const ZUCK_MOB_FRAMEW    = 1792;
+const ZUCK_MOB_FRAMEH    = 720;
+const ZUCK_MOB_DURATION  = 3000; // ms total
+const ZUCK_MOB_CROP_LEFT = 3;    // strip left pixels to hide black edge line
+const ZUCK_MOB_W         = 560;  // display width on canvas
+const ZUCK_MOB_H         = Math.round(ZUCK_MOB_W * (ZUCK_MOB_FRAMEH / ZUCK_MOB_FRAMEW));
+const ZUCK_MOB_FADE_W    = 48;   // edge fade width in display pixels
+let   _zuckMobOffscreen  = null; // reused offscreen canvas for gradient masking
+
+function drawZuckMob(renderTime) {
+  if (!zuckMobOverlay) return;
+  if (!zuckMobImg.complete || zuckMobImg.naturalWidth === 0) return;
+
+  if (zuckMobOverlay.startTime === null) zuckMobOverlay.startTime = renderTime;
+
+  const elapsed = renderTime - zuckMobOverlay.startTime;
+  if (elapsed >= ZUCK_MOB_DURATION) { zuckMobOverlay = null; return; }
+
+  // Spread all 25 frames evenly across the full 3s; hold last frame at the end
+  const frame = Math.min(Math.floor(elapsed / (ZUCK_MOB_DURATION / ZUCK_MOB_COLS)), ZUCK_MOB_COLS - 1);
+
+  const target = zuckMobOverlay.target;
+  const dx = Math.round(target.x - ZUCK_MOB_W / 2);
+  const dy = Math.round(GROUND - ZUCK_MOB_H);
+
+  // Draw frame (with left crop) into an offscreen canvas, then fade edges
+  if (!_zuckMobOffscreen) {
+    _zuckMobOffscreen = document.createElement('canvas');
+    _zuckMobOffscreen.width  = ZUCK_MOB_W;
+    _zuckMobOffscreen.height = ZUCK_MOB_H;
+  }
+  const oc  = _zuckMobOffscreen;
+  const oct = oc.getContext('2d');
+
+  oct.clearRect(0, 0, ZUCK_MOB_W, ZUCK_MOB_H);
+  oct.globalCompositeOperation = 'source-over';
+  oct.imageSmoothingEnabled = true;
+  oct.drawImage(
+    zuckMobImg,
+    frame * ZUCK_MOB_FRAMEW + ZUCK_MOB_CROP_LEFT, 0,
+    ZUCK_MOB_FRAMEW - ZUCK_MOB_CROP_LEFT, ZUCK_MOB_FRAMEH,
+    0, 0, ZUCK_MOB_W, ZUCK_MOB_H
+  );
+
+  // Knock out edge pixels using destination-in gradient masks
+  // Erase edge pixels using destination-out (only affects the filled rects, middle untouched)
+  oct.globalCompositeOperation = 'destination-out';
+
+  const lgL = oct.createLinearGradient(0, 0, ZUCK_MOB_FADE_W, 0);
+  lgL.addColorStop(0, 'rgba(0,0,0,1)'); // fully erased at far left
+  lgL.addColorStop(1, 'rgba(0,0,0,0)'); // untouched at inner edge of fade
+  oct.fillStyle = lgL;
+  oct.fillRect(0, 0, ZUCK_MOB_FADE_W, ZUCK_MOB_H);
+
+  const lgR = oct.createLinearGradient(ZUCK_MOB_W - ZUCK_MOB_FADE_W, 0, ZUCK_MOB_W, 0);
+  lgR.addColorStop(0, 'rgba(0,0,0,0)'); // untouched at inner edge of fade
+  lgR.addColorStop(1, 'rgba(0,0,0,1)'); // fully erased at far right
+  oct.fillStyle = lgR;
+  oct.fillRect(ZUCK_MOB_W - ZUCK_MOB_FADE_W, 0, ZUCK_MOB_FADE_W, ZUCK_MOB_H);
+
+  oct.globalCompositeOperation = 'source-over';
+
+  // Stamp onto main canvas, bypassing screen-shake transform
+  ctx.save();
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.drawImage(oc, dx, dy);
+  ctx.restore();
 }
 
 // ---- Render ----
@@ -440,25 +629,42 @@ function render(renderTime) {
   screenShake *= 0.8;
   if (screenShake < 0.4) screenShake = 0;
 
+  // View scores (from title TOP SCORES → SEE MORE)
+  if (gameState === 'viewScores') {
+    if (input.isMenuConfirm() || input.isEscapeKey()) {
+      gameState = 'title';
+      input.clearFrame();
+    }
+    drawViewScores(ctx, renderTime);
+    return;
+  }
+
   // Title screen
   if (gameState === 'title') {
-    // Arrow-key menu navigation (edge-triggered via input module)
     if (input.isMenuUp())   menuUp();
     if (input.isMenuDown()) menuDown();
     if (input.isMenuConfirm()) {
-      gameMode    = '1p';
-      audio.initAudio();
-      audio.sfxConfirmation();
-      audio.playMusic('assets/audio/music/intro.mp3');
-      // Go to character select
-      p1SelIdx         = 0;
-      p2SelIdx         = 1;
-      p1Confirmed      = false;
-      p2Confirmed      = false;
-      charSelectDelay  = 0;
-      gameState        = 'charSelect';
-      menuNavCooldown = MENU_NAV_DELAY;
-      input.clearFrame(); // prevent this Enter from immediately confirming in charSelect
+      const sel = getTitleMenuIndex();
+      if (sel === 1) {
+        // TOP SCORES selected
+        gameState = 'viewScores';
+        input.clearFrame();
+      } else {
+        // 1 PLAYER
+        gameMode    = '1p';
+        audio.initAudio();
+        audio.sfxConfirmation();
+        setTimeout(() => audio.sfxTestLuck(), 1000);
+        audio.playMusic('assets/audio/music/intro.mp3');
+        p1SelIdx         = 0;
+        p2SelIdx         = 1;
+        p1Confirmed      = false;
+        p2Confirmed      = false;
+        charSelectDelay  = 0;
+        gameState        = 'charSelect';
+        menuNavCooldown  = MENU_NAV_DELAY;
+        input.clearFrame();
+      }
     }
     drawTitle(ctx, drawBG, renderTime);
     return;
@@ -484,7 +690,7 @@ function render(renderTime) {
       if (menuNavCooldown === 0 && input.isMenuRight()) { p1SelIdx = csGridNav(p1SelIdx, 'right'); menuNavCooldown = MENU_NAV_DELAY; audio.sfxScroll(); }
       if (menuNavCooldown === 0 && input.isMenuUp())    { p1SelIdx = csGridNav(p1SelIdx, 'up');    menuNavCooldown = MENU_NAV_DELAY; audio.sfxScroll(); }
       if (menuNavCooldown === 0 && input.isMenuDown())  { p1SelIdx = csGridNav(p1SelIdx, 'down');  menuNavCooldown = MENU_NAV_DELAY; audio.sfxScroll(); }
-      if (input.isMenuConfirm()) { p1SelIdx = resolveRandom(p1SelIdx); p1Confirmed = true; audio.sfxConfirmation(); }
+      if (input.isMenuConfirm()) { p1SelIdx = resolveRandom(p1SelIdx); p1Confirmed = true; audio.sfxConfirmation(); setTimeout(() => audio.sfxCharSelect(), 500); }
     } else if (!p2Confirmed) {
       // 1P: P1 picks CPU's character. 2P: second player picks.
       if (menuNavCooldown === 0 && input.isMenuLeft())  { p2SelIdx = csGridNav(p2SelIdx, 'left');  menuNavCooldown = MENU_NAV_DELAY; audio.sfxScroll(); }
@@ -513,7 +719,7 @@ function render(renderTime) {
   if (gameState === 'mapSelect') {
     if (menuNavCooldown > 0) menuNavCooldown--;
     // ESC: back to char select (reset confirms so both players re-pick)
-    if (input.isEscapeKey()) {
+    if (!mapConfirmed && input.isEscapeKey()) {
       p1Confirmed      = false;
       p2Confirmed      = false;
       charSelectDelay  = 0;
@@ -521,9 +727,18 @@ function render(renderTime) {
       menuNavCooldown  = MENU_NAV_DELAY;
       input.clearFrame();
     }
-    if (menuNavCooldown === 0 && input.isMenuLeft())  { mapSelIdx = (mapSelIdx + MAP_DEFS.length - 1) % MAP_DEFS.length; menuNavCooldown = MENU_NAV_DELAY; audio.sfxScroll(); }
-    if (menuNavCooldown === 0 && input.isMenuRight()) { mapSelIdx = (mapSelIdx + 1) % MAP_DEFS.length; menuNavCooldown = MENU_NAV_DELAY; audio.sfxScroll(); }
-    if (input.isMenuConfirm()) {
+    if (!mapConfirmed && menuNavCooldown === 0 && input.isMenuLeft())  { mapSelIdx = (mapSelIdx + MAP_DEFS.length - 1) % MAP_DEFS.length; menuNavCooldown = MENU_NAV_DELAY; audio.sfxScroll(); }
+    if (!mapConfirmed && menuNavCooldown === 0 && input.isMenuRight()) { mapSelIdx = (mapSelIdx + 1) % MAP_DEFS.length; menuNavCooldown = MENU_NAV_DELAY; audio.sfxScroll(); }
+    if (!mapConfirmed && menuNavCooldown === 0 && input.isMenuUp()) {
+      const ROW1 = 3;
+      if (mapSelIdx >= ROW1) { mapSelIdx = mapSelIdx - ROW1; menuNavCooldown = MENU_NAV_DELAY; audio.sfxScroll(); }
+    }
+    if (!mapConfirmed && menuNavCooldown === 0 && input.isMenuDown()) {
+      const ROW1 = 3, row2Len = MAP_DEFS.length - ROW1;
+      if (mapSelIdx < ROW1) { mapSelIdx = ROW1 + Math.min(mapSelIdx, row2Len - 1); menuNavCooldown = MENU_NAV_DELAY; audio.sfxScroll(); }
+    }
+    if (!mapConfirmed && input.isMenuConfirm()) {
+      mapConfirmed = true;
       audio.sfxConfirmation();
       setActiveBG(MAP_DEFS[mapSelIdx]._img);
       const d1 = CHARACTERS[CHAR_IDS[p1SelIdx]];
@@ -533,14 +748,52 @@ function render(renderTime) {
       p1Wins  = 0;
       p2Wins  = 0;
       roundNum = 1;
-      startRound();
+      p1Score  = 0;
+      input.clearFrame();
+      audio.sfxLaughWithDelay(() => { mapConfirmed = false; startRound(); }, 1000);
     }
     drawMapSelect(ctx, renderTime, { mapSelIdx, maps: MAP_DEFS });
     return;
   }
 
+  // High score entry (1P win only)
+  if (gameState === 'highScore') {
+    if (menuNavCooldown > 0) menuNavCooldown--;
+    const onBoard = hsInsertIdx < HS_MAX;
+    if (onBoard) {
+      if (menuNavCooldown === 0 && input.isMenuUp())    { hsInitials[hsCursor] = prevHsChar(hsInitials[hsCursor]); menuNavCooldown = MENU_NAV_DELAY; audio.sfxScroll(); }
+      if (menuNavCooldown === 0 && input.isMenuDown())  { hsInitials[hsCursor] = nextHsChar(hsInitials[hsCursor]); menuNavCooldown = MENU_NAV_DELAY; audio.sfxScroll(); }
+      if (menuNavCooldown === 0 && input.isMenuLeft()  && hsCursor > 0) { hsCursor--; menuNavCooldown = MENU_NAV_DELAY; audio.sfxScroll(); }
+      if (menuNavCooldown === 0 && input.isMenuRight() && hsCursor < 2) { hsCursor++; menuNavCooldown = MENU_NAV_DELAY; audio.sfxScroll(); }
+    }
+    if (input.isMenuConfirm()) {
+      if (onBoard) saveHighScore(hsInitials.join(''), p1Score);
+      audio.sfxConfirmation();
+      audio.playMusic('assets/audio/music/intro.mp3');
+      gameState = 'title';
+      input.clearFrame();
+    }
+    // Smooth auto-scroll to center the player's entry row
+    const targetScroll = Math.max(0, 70 + hsInsertIdx * 24 - 180);
+    hsScrollOffset += (targetScroll - hsScrollOffset) * 0.08;
+    drawHighScore(ctx, renderTime, { scores: hsScores, playerScore: p1Score, initials: hsInitials, cursor: hsCursor, insertIdx: hsInsertIdx, scrollOffset: Math.round(hsScrollOffset) });
+    return;
+  }
+
   // Match end — Enter: char select  |  Escape: title
   if (gameState === 'matchEnd' && msgTimer <= -30) {
+    // In 1P mode when P1 wins, auto-transition to high score entry
+    if (gameMode === '1p' && p1Wins >= 2) {
+      hsScores       = loadHighScores();
+      hsInitials     = ['A', 'A', 'A'];
+      hsCursor       = 0;
+      hsInsertIdx    = getInsertIdx(hsScores, p1Score);
+      hsScrollOffset = 0;
+      menuNavCooldown = MENU_NAV_DELAY;
+      gameState = 'highScore';
+      input.clearFrame();
+      return;
+    }
     if (input.isMenuConfirm()) {
       audio.initAudio();
       audio.playMusic('assets/audio/music/intro.mp3');
@@ -577,11 +830,14 @@ function render(renderTime) {
   drawOverlays(p1, p2, renderTime);
   drawProjectiles(projectiles);
   drawParticles(ctx);
-  drawHUD(ctx, { p1, p2, p1Wins, p2Wins, roundTimer, roundNum, renderTime, p1GhostHP, p2GhostHP });
+  drawHUD(ctx, { p1, p2, p1Wins, p2Wins, roundTimer, roundNum, renderTime, p1GhostHP, p2GhostHP, p1Score, gameMode });
   // Suppress text message while KO door-slide is running
   if (koSlideFrame === null) drawMessage(ctx, msgText);
 
   ctx.restore();
+
+  // Zuck mob overlay — drawn outside screen-shake block so KO slide can't bury it
+  drawZuckMob(renderTime);
 
   // KO door-slide renders outside screen shake transform
   if (koSlideFrame !== null) {

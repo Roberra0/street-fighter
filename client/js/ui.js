@@ -9,19 +9,18 @@ export const BUILD = '2026-03-24 22:29 PST v8';
 let titleBlink = 0;
 
 // Title-screen menu state
-const MENU_ITEMS = ['1 PLAYER', '2 PLAYER'];
-let menuIndex = 0; // default: 1P
+const MENU_ITEMS = ['1 PLAYER', 'TOP SCORES'];
+let menuIndex = 0;
 
-// Returns the currently highlighted menu option index (0 = 1P, 1 = 2P).
+// Returns the currently highlighted menu option index (0 = 1P, 1 = TOP SCORES).
 export function getTitleMenuIndex() { return menuIndex; }
 
-// Move the menu cursor up or down (called from game.js using input.isMenuUp/Down).
-export function menuUp()   { menuIndex = 0; }  // only 1P is selectable
-export function menuDown() { menuIndex = 0; }
+export function menuUp()   { menuIndex = Math.max(0, menuIndex - 1); }
+export function menuDown() { menuIndex = Math.min(MENU_ITEMS.length - 1, menuIndex + 1); }
 
 // drawHUD reads all its data from the sim state passed in.
 // This keeps ui.js free of global references.
-export function drawHUD(ctx, { p1, p2, p1Wins, p2Wins, roundTimer, roundNum, renderTime, p1GhostHP, p2GhostHP }) {
+export function drawHUD(ctx, { p1, p2, p1Wins, p2Wins, roundTimer, roundNum, renderTime, p1GhostHP, p2GhostHP, p1Score, gameMode }) {
   const MUG    = 38;
   const CON    = 10;
   const bH     = 10;
@@ -186,6 +185,21 @@ export function drawHUD(ctx, { p1, p2, p1Wins, p2Wins, roundTimer, roundNum, ren
   for (let i = 0; i < 2; i++) drawDot(p1BarX + i * 10, dotY, i < p1Wins);
   for (let i = 0; i < 2; i++) drawDot(p2BarR - 6 - i * 10, dotY, i < p2Wins);
 
+  // ── Score tally (1P mode only, top-left below mugshot) ───────────────────────
+  if (gameMode === '1p' && p1Score !== undefined) {
+    ctx.save();
+    ctx.textBaseline = 'top';
+    ctx.textAlign = 'left';
+    ctx.font = 'bold 6px monospace';
+    ctx.fillStyle = '#aa7700';
+    ctx.fillText('SCORE', 2, 40);
+    ctx.font = 'bold 8px monospace';
+    ctx.fillStyle = '#ffee88';
+    ctx.fillText(String(p1Score).padStart(6, '0'), 2, 48);
+    ctx.textBaseline = 'alphabetic';
+    ctx.restore();
+  }
+
   // Super meters — bottom of screen, P1 left / P2 right
   const mW = 220, mH = 14;
   const mY = GH - mH - 6;
@@ -316,17 +330,24 @@ export function drawTitle(ctx, drawBG, renderTime) {
   ctx.fillStyle = '#00000088';
   ctx.fillRect(0, 0, GW, GH);
 
+  // ── Top-right hint ────────────────────────────────────────────────────────────
+  ctx.font = 'bold 8px monospace';
+  ctx.fillStyle = '#666644';
+  ctx.textAlign = 'right';
+  ctx.fillText('ENTER  to confirm', GW - 8, 14);
+
+  // ── Title ─────────────────────────────────────────────────────────────────────
   ctx.fillStyle = '#fc5';
   ctx.font = 'bold 42px monospace';
   ctx.textAlign = 'center';
-  ctx.fillText('STREET BRAWL', GW / 2, 78);
+  ctx.fillText('STREET BRAWL', GW / 2, 68);
 
-  // Mugshot roster strip (real chars only — skip RANDOM slot)
+  // ── Mugshot roster strip ──────────────────────────────────────────────────────
   const realChars = CHAR_DEFS.filter(c => c.id !== 'random');
   const mugSz = 28, mugGap = 4;
   const mugRowW = realChars.length * mugSz + (realChars.length - 1) * mugGap;
   const mugX0 = Math.round((GW - mugRowW) / 2);
-  const mugY0 = 84;
+  const mugY0 = 74;
   realChars.forEach((ch, i) => {
     const mx = mugX0 + i * (mugSz + mugGap);
     ctx.fillStyle = ch.color;
@@ -340,34 +361,14 @@ export function drawTitle(ctx, drawBG, renderTime) {
       ctx.fillStyle = ch.accent;
       ctx.fillRect(mx + 5, mugY0 + 4, mugSz - 10, mugSz - 12);
     }
-    ctx.fillStyle = '#888888';
-    ctx.font = '5px monospace';
-    ctx.textAlign = 'center';
-    ctx.fillText(ch.name.slice(0, 4), mx + mugSz / 2, mugY0 + mugSz + 7);
   });
 
-  ctx.fillStyle = '#555';
-  ctx.font = '8px monospace';
-  ctx.fillText('build ' + BUILD, GW / 2, 124);
-
-  ctx.fillStyle = '#bbb';
-  ctx.font = '10px monospace';
-  ctx.fillText('P1:  Arrows move  |  Z punch  |  X kick  |  C block  |  fwd+button = heavy', GW / 2, 137);
-  ctx.fillText('P2:  WASD move  |  J punch  |  K kick  |  L block  |  fwd+button = heavy', GW / 2, 150);
-
-  // Menu items
+  // ── Menu items ────────────────────────────────────────────────────────────────
   titleBlink += 0.04;
   MENU_ITEMS.forEach((label, i) => {
-    const y = 182 + i * 28;
+    const y = 125 + i * 26;
     const selected = i === menuIndex;
-    const locked = i === 1; // 2P is not selectable
-    if (locked) {
-      ctx.fillStyle = '#444';
-      ctx.font = '14px monospace';
-      ctx.globalAlpha = 0.5;
-      ctx.fillText(label + '  [COMING SOON]', GW / 2, y);
-      ctx.globalAlpha = 1;
-    } else if (selected) {
+    if (selected) {
       ctx.fillStyle = '#fc5';
       ctx.font = 'bold 16px monospace';
       ctx.globalAlpha = 0.5 + Math.sin(titleBlink * 3) * 0.5;
@@ -380,9 +381,48 @@ export function drawTitle(ctx, drawBG, renderTime) {
     }
   });
 
-  ctx.fillStyle = '#555';
-  ctx.font = '9px monospace';
-  ctx.fillText('UP / DOWN  to select    ENTER to confirm', GW / 2, 240);
+  // ── Top scores panel ──────────────────────────────────────────────────────────
+  let allScores = [];
+  try { const r = localStorage.getItem('SFHighScores'); allScores = r ? JSON.parse(r) : []; } catch {}
+  const top3 = allScores.slice(0, 3);
+  const hasMore = allScores.length > 3;
+  const scoresHighlighted = menuIndex === 1; // TOP SCORES menu item selected
+
+  const panelTop = 184;
+  ctx.fillStyle = '#221800';
+  ctx.fillRect(GW / 2 - 120, panelTop, 240, 1);
+
+  ctx.font = 'bold 7px monospace';
+  ctx.fillStyle = scoresHighlighted ? '#ffcc44' : '#886622';
+  ctx.textAlign = 'center';
+  ctx.fillText('TOP  SCORES', GW / 2, panelTop + 11);
+
+  if (top3.length === 0) {
+    ctx.fillStyle = scoresHighlighted ? '#665533' : '#3a2a10';
+    ctx.font = '7px monospace';
+    ctx.fillText('— NO SCORES YET —', GW / 2, panelTop + 30);
+  } else {
+    top3.forEach((entry, i) => {
+      const y = panelTop + 24 + i * 16;
+      ctx.font = 'bold 9px monospace';
+      ctx.fillStyle = scoresHighlighted
+        ? (i === 0 ? '#ffcc44' : '#998855')
+        : '#886622';
+      ctx.fillText(
+        String(i + 1) + '.  ' + entry.name + '  ' + String(entry.score).padStart(6, '0'),
+        GW / 2, y
+      );
+    });
+  }
+
+  // "SEE MORE" — only shown when there are >3 scores; flashes when highlighted
+  if (hasMore) {
+    const seeMoreY = panelTop + 24 + top3.length * 16 + 8;
+    const seeBlink = scoresHighlighted && Math.floor(renderTime / 300) % 2 === 0;
+    ctx.font = 'bold 8px monospace';
+    ctx.fillStyle = scoresHighlighted ? (seeBlink ? '#ffcc44' : '#665533') : '#3a2a10';
+    ctx.fillText('SEE MORE  ▼', GW / 2, seeMoreY);
+  }
 }
 
 export function drawPauseOverlay(ctx) {
@@ -467,6 +507,7 @@ const CHAR_DEFS = [
   { id: 'zuck',          name: 'ZUCK',     color: '#1877f2', accent: '#ffffff', mug: 'assets/characters/zuck/zuck_mug.png',                   portrait: 'assets/characters/zuck/zuck_fullbody.png' },
   { id: 'jacked_jeff',   name: 'JACKED J', color: '#d4af37', accent: '#222222', mug: 'assets/characters/jacked_jeff/jacked_jeff_mug.png',     portrait: 'assets/characters/jacked_jeff/jacked_jeff_fullbody.png' },
   { id: 'jensen',        name: 'JENSEN',   color: '#1a1a22', accent: '#76b900', mug: 'assets/characters/jensen/jensen_mug.png',               portrait: 'assets/characters/jensen/jensen_fullbody.png' },
+  { id: 'musk',          name: 'MUSK',     color: '#1a1a2e', accent: '#cc0000', mug: 'assets/characters/musk/elon_mugshot.png',               portrait: 'assets/characters/musk/elon_fullbody.png' },
   { id: 'skinny_jeff',   name: 'SLIM JEFF',color: '#232f3e', accent: '#ff9900', mug: 'assets/characters/skinny_jeff/skinny_jeff_mug.png',     portrait: 'assets/characters/skinny_jeff/skinny_jeff_fullbody.png', mugScale: 0.85 },
   { id: 'laker',         name: 'LAKER',    color: '#552583', accent: '#FDB927', mug: 'assets/characters/laker/laker_mug.png',                 portrait: 'assets/characters/laker/laker_fullbody.png' },
   { id: 'lady_kickboxer',name: 'LADY K',   color: '#2a2aaa', accent: '#ee2222', mug: 'assets/characters/lady_kickboxer/kickboxer_mug.png',   portrait: 'assets/characters/lady_kickboxer/kickboxer_fullbody.png' },
@@ -491,7 +532,7 @@ const _vsImg = new Image();       _vsImg.src = 'assets/screens/vs.png';
 const _mapWorldImg = new Image(); _mapWorldImg.src = 'assets/screens/map.png';
 
 // Grid layout constants — 4/4/3 variable row layout, all rows centered
-const ROW_SIZES = [4, 4, 3];
+const ROW_SIZES = [4, 4, 4];
 const CELL = 46, CGAP = 4;
 const MAX_COLS = Math.max(...ROW_SIZES);
 const GRID_W = MAX_COLS * CELL + (MAX_COLS - 1) * CGAP;
@@ -924,7 +965,7 @@ export function drawMapSelect(ctx, renderTime, { mapSelIdx, maps }) {
     if (isHot) {
     ctx.font = 'bold 7px monospace';
     ctx.textAlign = 'center';
-    const labelText = m.name;
+    const labelText = m.cityName || m.name;
     const tw = ctx.measureText(labelText).width;
     const pad = 2;
     const lh = 8;
@@ -967,41 +1008,219 @@ export function drawMapSelect(ctx, renderTime, { mapSelIdx, maps }) {
     ctx.restore();
   });
 
-  // ── Thumbnail strip ──────────────────────────────────────────────────────────
-  const thumbW = 90, thumbH = 51, gap = 10;
-  const totalW = maps.length * thumbW + (maps.length - 1) * gap;
-  const startX = Math.round((GW - totalW) / 2);
+  // ── Thumbnail strip — row of 3, row of 2 ─────────────────────────────────
+  const thumbW = 90, thumbH = 44, gap = 10, rowGap = 8;
   const thumbY = mapY + mapH + 8;
+  const ROW1 = 3;
 
   maps.forEach((m, i) => {
-    const tx = startX + i * (thumbW + gap);
+    const isRow2 = i >= ROW1;
+    const rowIdx = isRow2 ? i - ROW1 : i;
+    const rowCount = isRow2 ? maps.length - ROW1 : ROW1;
+    const rowTotalW = rowCount * thumbW + (rowCount - 1) * gap;
+    const rowStartX = Math.round((GW - rowTotalW) / 2);
+    const tx = rowStartX + rowIdx * (thumbW + gap);
+    const ty = isRow2 ? thumbY + thumbH + 11 + rowGap : thumbY;
     const isSelected = i === mapSelIdx;
 
     if (m._img && m._img.complete && m._img.naturalWidth > 0) {
-      ctx.drawImage(m._img, tx, thumbY, thumbW, thumbH);
+      ctx.drawImage(m._img, tx, ty, thumbW, thumbH);
     } else {
       ctx.fillStyle = '#222';
-      ctx.fillRect(tx, thumbY, thumbW, thumbH);
+      ctx.fillRect(tx, ty, thumbW, thumbH);
     }
 
     if (isSelected) {
       const pulse = 0.7 + 0.3 * Math.abs(Math.sin(renderTime * 0.008));
-      draw3DSelBoxRect(ctx, tx, thumbY, thumbW, thumbH, '#ffcc00', '#ffee88', '#886600', pulse);
+      draw3DSelBoxRect(ctx, tx, ty, thumbW, thumbH, '#ffcc00', '#ffee88', '#886600', pulse);
     } else {
       ctx.strokeStyle = '#444';
       ctx.lineWidth = 1;
-      ctx.strokeRect(tx, thumbY, thumbW, thumbH);
+      ctx.strokeRect(tx, ty, thumbW, thumbH);
     }
 
     ctx.fillStyle = isSelected ? '#ffcc00' : '#888';
     ctx.font = isSelected ? 'bold 8px monospace' : '7px monospace';
     ctx.textAlign = 'center';
-    ctx.fillText(m.name, tx + thumbW / 2, thumbY + thumbH + 11);
+    ctx.fillText(m.thumbName || m.name, tx + thumbW / 2, ty + thumbH + 11);
   });
 
   // ── Instructions ─────────────────────────────────────────────────────────────
   ctx.fillStyle = '#666';
   ctx.font = '8px monospace';
+  ctx.textAlign = 'right';
+  ctx.fillText('← ↑ ↓ → pick   ENTER confirm   ESC back', GW - 4, 18);
+}
+
+// ── High Score entry screen ───────────────────────────────────────────────────
+export function drawHighScore(ctx, renderTime, { scores, playerScore, initials, cursor, insertIdx, scrollOffset }) {
+  // Build the display list: existing scores with player's pending entry spliced in
+  const display = scores.map((s, i) => ({ rank: i + 1, name: s.name, score: s.score, isPlayer: false }));
+  const onBoard = insertIdx < 10;
+  if (onBoard) {
+    display.splice(insertIdx, 0, { rank: insertIdx + 1, name: initials.join(''), score: playerScore, isPlayer: true });
+    for (let i = insertIdx + 1; i < display.length; i++) display[i].rank = i + 1;
+    display.splice(10, display.length - 10);
+  }
+
+  const ROW_H   = 24;
+  const LIST_Y  = 72;
+  const blink   = Math.floor(renderTime / 350) % 2 === 0;
+
+  // Background
+  ctx.fillStyle = '#000010';
+  ctx.fillRect(0, 0, GW, GH);
+  // Subtle scanlines
+  ctx.fillStyle = 'rgba(0,0,0,0.18)';
+  for (let y = 0; y < GH; y += 4) ctx.fillRect(0, y, GW, 2);
+
+  // Title
   ctx.textAlign = 'center';
-  ctx.fillText('← → to pick   ENTER confirm   ESC back', GW / 2, GH - 6);
+  ctx.textBaseline = 'top';
+  ctx.font = 'bold 22px monospace';
+  ctx.fillStyle = '#ffcc00';
+  ctx.fillText('HIGH SCORES', GW / 2, 12);
+  ctx.fillStyle = '#885500';
+  ctx.fillRect(GW / 2 - 80, 37, 160, 1);
+
+  // Column headers
+  ctx.font = 'bold 8px monospace';
+  ctx.fillStyle = '#886622';
+  ctx.textAlign = 'left';
+  ctx.fillText('RANK', 88, 48);
+  ctx.fillText('NAME', 190, 48);
+  ctx.textAlign = 'right';
+  ctx.fillText('SCORE', 552, 48);
+  ctx.fillStyle = '#2a2010';
+  ctx.fillRect(70, 58, 500, 1);
+
+  // Rows
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(0, 60, GW, GH - 90);
+  ctx.clip();
+
+  for (let i = 0; i < display.length; i++) {
+    const e   = display[i];
+    const rowY = LIST_Y + i * ROW_H - scrollOffset;
+
+    if (e.isPlayer) {
+      // Highlight strip
+      ctx.fillStyle = 'rgba(255,200,0,0.07)';
+      ctx.fillRect(68, rowY - 1, 504, ROW_H);
+
+      // Rank
+      ctx.font = 'bold 13px monospace';
+      ctx.fillStyle = '#ffcc00';
+      ctx.textAlign = 'right';
+      ctx.fillText(String(e.rank), 152, rowY + 5);
+
+      // Blinking arrow
+      if (blink) {
+        ctx.textAlign = 'left';
+        ctx.fillText('►', 70, rowY + 5);
+      }
+
+      // Initials slots
+      for (let c = 0; c < 3; c++) {
+        const slotX = 188 + c * 22;
+        const active = c === cursor;
+        ctx.fillStyle = active ? (blink ? '#ffcc00' : '#664400') : '#1a1000';
+        ctx.fillRect(slotX - 1, rowY + 1, 18, 17);
+        ctx.font = 'bold 13px monospace';
+        ctx.textAlign = 'center';
+        ctx.fillStyle = active ? (blink ? '#000000' : '#ffcc00') : '#ffcc00';
+        const ch = initials[c] === ' ' ? '_' : initials[c];
+        ctx.fillText(ch, slotX + 8, rowY + 5);
+      }
+
+      // Score
+      ctx.font = 'bold 13px monospace';
+      ctx.textAlign = 'right';
+      ctx.fillStyle = '#ffcc00';
+      ctx.fillText(String(playerScore).padStart(6, '0'), 552, rowY + 5);
+    } else {
+      ctx.font = 'bold 11px monospace';
+      ctx.fillStyle = i % 2 === 0 ? '#cccccc' : '#999999';
+      ctx.textAlign = 'right';
+      ctx.fillText(String(e.rank).padStart(2, ' '), 152, rowY + 6);
+      ctx.textAlign = 'left';
+      ctx.fillText(e.name, 190, rowY + 6);
+      ctx.textAlign = 'right';
+      ctx.fillText(String(e.score).padStart(6, '0'), 552, rowY + 6);
+    }
+  }
+
+  ctx.restore();
+
+  // Bottom rule
+  ctx.fillStyle = '#2a2010';
+  ctx.fillRect(70, GH - 44, 500, 1);
+
+  // Instructions
+  ctx.font = 'bold 8px monospace';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'top';
+  if (onBoard) {
+    ctx.fillStyle = '#886622';
+    ctx.fillText('↑ ↓  CHANGE LETTER     ← →  MOVE     ENTER  CONFIRM', GW / 2, GH - 38);
+  } else {
+    ctx.fillStyle = '#776655';
+    ctx.fillText('YOUR SCORE: ' + String(playerScore).padStart(6, '0') + '     PRESS ENTER TO CONTINUE', GW / 2, GH - 38);
+  }
+
+  ctx.textBaseline = 'alphabetic';
+  ctx.textAlign = 'left';
+}
+
+// ── Full high score viewer (title → TOP SCORES → SEE MORE) ───────────────────
+export function drawViewScores(ctx, renderTime) {
+  let scores = [];
+  try { const r = localStorage.getItem('SFHighScores'); scores = r ? JSON.parse(r) : []; } catch {}
+
+  ctx.fillStyle = '#000010';
+  ctx.fillRect(0, 0, GW, GH);
+  ctx.fillStyle = 'rgba(0,0,0,0.18)';
+  for (let y = 0; y < GH; y += 4) ctx.fillRect(0, y, GW, 2);
+
+  // Top-right back hint
+  ctx.font = 'bold 8px monospace';
+  ctx.fillStyle = '#666644';
+  ctx.textAlign = 'right';
+  ctx.textBaseline = 'top';
+  ctx.fillText('ENTER or ESC  to go back', GW - 8, 8);
+
+  // Title
+  ctx.textAlign = 'center';
+  ctx.font = 'bold 22px monospace';
+  ctx.fillStyle = '#ffcc00';
+  ctx.fillText('HIGH SCORES', GW / 2, 14);
+  ctx.fillStyle = '#885500';
+  ctx.fillRect(GW / 2 - 80, 39, 160, 1);
+
+  // List
+  if (scores.length === 0) {
+    ctx.font = 'bold 10px monospace';
+    ctx.fillStyle = '#555544';
+    ctx.fillText('— NO SCORES YET —', GW / 2, GH / 2);
+  } else {
+    const ROW_H = 26;
+    const LIST_Y = 52;
+    scores.forEach((entry, i) => {
+      const y = LIST_Y + i * ROW_H;
+      // Alternating row tint
+      if (i % 2 === 0) { ctx.fillStyle = 'rgba(255,200,0,0.04)'; ctx.fillRect(70, y - 1, 500, ROW_H); }
+      ctx.font = 'bold 12px monospace';
+      ctx.fillStyle = i === 0 ? '#ffcc44' : '#aaaaaa';
+      ctx.textAlign = 'right';
+      ctx.fillText(String(i + 1).padStart(2, ' '), 160, y + 14);
+      ctx.textAlign = 'left';
+      ctx.fillText(entry.name, 186, y + 14);
+      ctx.textAlign = 'right';
+      ctx.fillText(String(entry.score).padStart(6, '0'), 554, y + 14);
+    });
+  }
+
+  ctx.textBaseline = 'alphabetic';
+  ctx.textAlign = 'left';
 }

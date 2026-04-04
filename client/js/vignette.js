@@ -15,10 +15,6 @@ const VIGNETTE_DURATION = 36; // 0.6 s at 60 fps
 // ---- Character theme table ----
 // Keyed by charDef.id. Fallback applied when id is unknown.
 const CHAR_THEMES = {
-  ryu:   { accent: '#3388ff', panel: '#1a1a3a' },
-  trump: { accent: '#ffd700', panel: '#1a237e' },
-  obama: { accent: '#cc4444', panel: '#1c1c2e' },
-  nene:  { accent: '#ff69b4', panel: '#2d1b2e' },
 };
 
 const FALLBACK_THEME = { accent: '#ffffff', panel: '#111111' };

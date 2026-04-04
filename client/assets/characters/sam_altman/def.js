@@ -1,6 +1,6 @@
 export default {
   id: 'altman',
-  voice: 'male',
+  voiceSet: 'set_2',
   displayName: 'ALTMAN',
   startX: 140,
   facing: 1,

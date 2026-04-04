@@ -145,7 +145,14 @@ export function drawProjectiles(projs) {
     ctx.translate(Math.round(proj.x), Math.round(proj.y));
     ctx.rotate(proj.angle);
     ctx.imageSmoothingEnabled = false;
-    ctx.drawImage(img, -proj.w / 2, -proj.h / 2, proj.w, proj.h);
+    if (proj.frameW && proj.cols) {
+      const frame   = (proj._animFrame || 0) % proj.cols;
+      const cropX   = proj.frameCropX || 0;
+      const cropW   = proj.frameCropW || proj.frameW;
+      ctx.drawImage(img, frame * proj.frameW + cropX, 0, cropW, proj.frameH, -proj.w / 2, -proj.h / 2, proj.w, proj.h);
+    } else {
+      ctx.drawImage(img, -proj.w / 2, -proj.h / 2, proj.w, proj.h);
+    }
     ctx.restore();
   }
 }
@@ -285,15 +292,7 @@ export function drawFighterPlaceholder(fighter, renderTime) {
       // Feet are drawn at y≈0 in local space; scaling about the origin keeps them at GROUND.
       ctx.scale(3, 3);
       const id = fighter.def.id;
-      if (id === 'trump') {
-        _drawTrump(fighter, renderTime);
-      } else if (id === 'obama') {
-        _drawObama(fighter, renderTime);
-      } else if (id === 'nene') {
-        _drawNene(fighter, renderTime);
-      } else {
-        _drawRyu(fighter, renderTime);
-      }
+      _drawRyu(fighter, renderTime);
       ctx.restore();
     }
   }
