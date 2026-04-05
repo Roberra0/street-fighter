@@ -114,6 +114,10 @@ export function clearMotionOnUse(playerIdx) {
 
 // Check if Enter or Space is currently pressed (for menu navigation).
 // Consuming read — prevents double-confirm on 0-tick frames (same issue as isPauseKey).
+export function isAnyKey() {
+  return pressedThisAccum.size > 0;
+}
+
 export function isMenuConfirm() {
   const e = pressedThisAccum.get('Enter');
   const s = pressedThisAccum.get('Space');

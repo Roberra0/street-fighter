@@ -6,7 +6,7 @@ import { ctx, drawBG, setActiveBG, drawShadow, drawFighterPlaceholder, drawProje
 import { pushApart, resolveHits, clampToWalls } from './collision.js';
 import * as audio    from './audio.js';
 import { spawnHitSpark, spawnBlockSpark, updateParticles, drawParticles, clearParticles } from './particles.js';
-import { drawHUD, drawMessage, drawKOScreen, drawTitle, drawCharSelect, drawMapSelect, drawPauseOverlay, drawControlsOverlay, drawHighScore, drawViewScores, getTitleMenuIndex, menuUp, menuDown } from './ui.js';
+import { drawHUD, drawMessage, drawKOScreen, drawTitle, drawCharSelect, drawMapSelect, drawPauseOverlay, drawControlsOverlay, drawHighScore, drawViewScores, drawLoading, getTitleMenuIndex, menuUp, menuDown } from './ui.js';
 import { cpuSnapshot } from './cpu.js';
 
 // ---- Constants ----
@@ -17,7 +17,7 @@ const GROUND = 340;
 
 // ---- Sim state ----
 // (everything needed to replay or snapshot a round)
-let gameState  = 'title';
+let gameState  = 'loading';
 let gameMode   = '2p';   // '1p' or '2p'
 let roundTimer = 99;
 let roundTicks = 0;   // 60 ticks = 1 second
@@ -158,6 +158,29 @@ loadSpriteSheet(CHARACTERS['jacked_jeff']);
 loadSpriteSheet(CHARACTERS['jensen']);
 loadSpriteSheet(CHARACTERS['skinny_jeff']);
 loadSpriteSheet(CHARACTERS['musk']);
+
+// ---- Asset loading gate ----
+let assetsReady = false;
+{
+  const allImgs = [
+    ...MAP_DEFS.map(m => m._img),
+    teslaImg,
+    zuckMobImg,
+    ...Object.values(CHARACTERS).flatMap(def => {
+      const imgs = [];
+      if (def._spriteImage)      imgs.push(def._spriteImage);
+      if (def._idleImage)        imgs.push(def._idleImage);
+      if (def._customSheetImage) imgs.push(def._customSheetImage);
+      if (def._animSheetImages)  imgs.push(...Object.values(def._animSheetImages));
+      if (def.overlay?._img)     imgs.push(def.overlay._img);
+      if (def.projectile?._imgs) imgs.push(...def.projectile._imgs);
+      return imgs;
+    }),
+  ];
+  Promise.all(allImgs.map(img => new Promise(res => {
+    if (img.complete) res(); else { img.onload = res; img.onerror = res; }
+  }))).then(() => { assetsReady = true; });
+}
 
 let p1 = new Fighter(CHARACTERS['altman'], 0);
 let p2 = new Fighter(CHARACTERS['altman'], 1);
@@ -634,6 +657,17 @@ function render(renderTime) {
   // Decay screen shake
   screenShake *= 0.8;
   if (screenShake < 0.4) screenShake = 0;
+
+  // Loading screen — wait for all assets, then gate on user interaction (unblocks audio autoplay)
+  if (gameState === 'loading') {
+    drawLoading(ctx, assetsReady, renderTime);
+    if (assetsReady && input.isAnyKey()) {
+      audio.initAudio();
+      gameState = 'title';
+      input.clearFrame();
+    }
+    return;
+  }
 
   // View scores (from title TOP SCORES → SEE MORE)
   if (gameState === 'viewScores') {

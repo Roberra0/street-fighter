@@ -18,6 +18,28 @@ export function getTitleMenuIndex() { return menuIndex; }
 export function menuUp()   { menuIndex = Math.max(0, menuIndex - 1); }
 export function menuDown() { menuIndex = Math.min(MENU_ITEMS.length - 1, menuIndex + 1); }
 
+export function drawLoading(ctx, ready, renderTime) {
+  ctx.fillStyle = '#000';
+  ctx.fillRect(0, 0, GW, GH);
+
+  ctx.textAlign = 'center';
+  ctx.fillStyle = '#fff';
+  ctx.font = 'bold 18px monospace';
+  ctx.fillText('STREET BRAWL', GW / 2, GH / 2 - 30);
+
+  if (!ready) {
+    ctx.font = '10px monospace';
+    ctx.fillStyle = '#888';
+    const dots = '.'.repeat((Math.floor(renderTime / 400) % 4));
+    ctx.fillText('Loading' + dots, GW / 2, GH / 2 + 10);
+  } else {
+    const blink = Math.floor(renderTime / 500) % 2 === 0;
+    ctx.font = 'bold 11px monospace';
+    ctx.fillStyle = blink ? '#ffcc44' : '#886622';
+    ctx.fillText('PRESS ANY KEY TO START', GW / 2, GH / 2 + 10);
+  }
+}
+
 // drawHUD reads all its data from the sim state passed in.
 // This keeps ui.js free of global references.
 export function drawHUD(ctx, { p1, p2, p1Wins, p2Wins, roundTimer, roundNum, renderTime, p1GhostHP, p2GhostHP, p1Score, gameMode }) {
