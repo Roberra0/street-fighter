@@ -383,7 +383,8 @@ export function drawTitle(ctx, drawBG, renderTime) {
 
   // ── Top scores panel ──────────────────────────────────────────────────────────
   let allScores = [];
-  try { const r = localStorage.getItem('SFHighScores'); allScores = r ? JSON.parse(r) : []; } catch {}
+  const _uiSeed = [{name:'JNY',score:420},{name:'MKE',score:380},{name:'SPR',score:350},{name:'RND',score:310}];
+  try { const r = localStorage.getItem('SFHighScores'); allScores = r ? JSON.parse(r) : _uiSeed; } catch { allScores = _uiSeed; }
   const top3 = allScores.slice(0, 3);
   const hasMore = allScores.length > 3;
   const scoresHighlighted = menuIndex === 1; // TOP SCORES menu item selected
@@ -1176,7 +1177,8 @@ export function drawHighScore(ctx, renderTime, { scores, playerScore, initials, 
 // ── Full high score viewer (title → TOP SCORES → SEE MORE) ───────────────────
 export function drawViewScores(ctx, renderTime) {
   let scores = [];
-  try { const r = localStorage.getItem('SFHighScores'); scores = r ? JSON.parse(r) : []; } catch {}
+  const _vsSeed = [{name:'JNY',score:420},{name:'MKE',score:380},{name:'SPR',score:350},{name:'RND',score:310}];
+  try { const r = localStorage.getItem('SFHighScores'); scores = r ? JSON.parse(r) : _vsSeed; } catch { scores = _vsSeed; }
 
   ctx.fillStyle = '#000010';
   ctx.fillRect(0, 0, GW, GH);

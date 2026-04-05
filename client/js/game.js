@@ -92,8 +92,14 @@ let p1Score = 0;
 // ---- High score helpers ----
 const HS_KEY = 'SFHighScores';
 const HS_MAX = 10;
+const HS_SEED = [
+  { name: 'JNY', score: 420 },
+  { name: 'MKE', score: 380 },
+  { name: 'SPR', score: 350 },
+  { name: 'RND', score: 310 },
+];
 function loadHighScores() {
-  try { const r = localStorage.getItem(HS_KEY); return r ? JSON.parse(r) : []; } catch { return []; }
+  try { const r = localStorage.getItem(HS_KEY); return r ? JSON.parse(r) : HS_SEED.slice(); } catch { return HS_SEED.slice(); }
 }
 function saveHighScore(name, score) {
   const arr = loadHighScores();
@@ -761,6 +767,19 @@ function render(renderTime) {
     if (menuNavCooldown > 0) menuNavCooldown--;
     const onBoard = hsInsertIdx < HS_MAX;
     if (onBoard) {
+      // Direct keyboard typing
+      const typed = input.getTypedLetter();
+      if (typed) {
+        hsInitials[hsCursor] = typed;
+        if (hsCursor < 2) hsCursor++;
+        audio.sfxScroll();
+      }
+      if (input.getBackspace() && hsCursor > 0) {
+        hsCursor--;
+        hsInitials[hsCursor] = 'A';
+        audio.sfxScroll();
+      }
+      // Up/down still cycle letters on current slot
       if (menuNavCooldown === 0 && input.isMenuUp())    { hsInitials[hsCursor] = prevHsChar(hsInitials[hsCursor]); menuNavCooldown = MENU_NAV_DELAY; audio.sfxScroll(); }
       if (menuNavCooldown === 0 && input.isMenuDown())  { hsInitials[hsCursor] = nextHsChar(hsInitials[hsCursor]); menuNavCooldown = MENU_NAV_DELAY; audio.sfxScroll(); }
       if (menuNavCooldown === 0 && input.isMenuLeft()  && hsCursor > 0) { hsCursor--; menuNavCooldown = MENU_NAV_DELAY; audio.sfxScroll(); }

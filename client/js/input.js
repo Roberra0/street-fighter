@@ -149,6 +149,26 @@ export function isMenuDown() { return pressedThisAccum.get('ArrowDown'); }
 export function isMenuLeft()  { return pressedThisAccum.get('ArrowLeft');  }
 export function isMenuRight() { return pressedThisAccum.get('ArrowRight'); }
 
+// Returns the first A-Z letter typed this frame (consuming it), or null.
+export function getTypedLetter() {
+  for (const [code, count] of pressedThisAccum) {
+    if (count > 0 && code.startsWith('Key')) {
+      const letter = code[3]; // 'KeyA' → 'A'
+      pressedThisAccum.set(code, count - 1);
+      if (count - 1 === 0) pressedThisAccum.delete(code);
+      return letter;
+    }
+  }
+  return null;
+}
+
+// Returns true if Backspace was pressed this frame (consuming it).
+export function getBackspace() {
+  const c = pressedThisAccum.get('Backspace');
+  if (c) { pressedThisAccum.delete('Backspace'); return true; }
+  return false;
+}
+
 // Returns true if a direction key was just pressed this frame (edge, not hold).
 // Used to gate dash detection — dash should only fire on a fresh tap, not while holding.
 export function isDirEdge(playerIdx, dirBitmask) {
