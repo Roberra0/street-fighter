@@ -203,21 +203,25 @@ export function sfxRecoil(voiceSet) {
 // --- Announcer voice ---
 
 export function sfxRoundAnnounce(roundNum) {
-  if (roundNum <= 1)      playBuffer('round_1_fight', 0.65);
-  else if (roundNum <= 2) playBuffer('round_2_fight', 0.65);
-  else                    playBuffer('final_round',   0.65);
+  const key = roundNum <= 1 ? 'round_1_fight' : roundNum <= 2 ? 'round_2_fight' : 'final_round';
+  duckMusic(clipMs(key));
+  playBuffer(key, 0.78);
 }
 
 // Randomly pick a KO praise clip or Fatality
 const KO_CLIPS = ['outstanding', 'impressive', 'well_done', 'fatality'];
 export function sfxKOAnnounce() {
-  playBuffer(KO_CLIPS[Math.floor(Math.random() * KO_CLIPS.length)], 0.65);
+  const key = KO_CLIPS[Math.floor(Math.random() * KO_CLIPS.length)];
+  duckMusic(clipMs(key));
+  playBuffer(key, 0.78);
 }
 
 // Random praise on a 4-hit combo
 const PRAISE_CLIPS = ['outstanding', 'impressive', 'well_done'];
 export function sfxCombo4() {
-  playBuffer(PRAISE_CLIPS[Math.floor(Math.random() * PRAISE_CLIPS.length)], 0.65);
+  const key = PRAISE_CLIPS[Math.floor(Math.random() * PRAISE_CLIPS.length)];
+  duckMusic(clipMs(key));
+  playBuffer(key, 0.78);
 }
 
 // Returns buffer duration in ms + padding, or a safe fallback if not yet decoded
@@ -226,8 +230,8 @@ function clipMs(key) {
   return buf ? Math.ceil(buf.duration * 1000) + 300 : 2000;
 }
 
-export function sfxFinishHim() { playBuffer('finish_him', 0.65); }
-export function sfxTestLuck()  { duckMusic(clipMs('test_luck')); playBuffer('test_luck', 0.65); }
+export function sfxFinishHim() { duckMusic(clipMs('finish_him')); playBuffer('finish_him', 0.78); }
+export function sfxTestLuck()  { duckMusic(clipMs('test_luck'));  playBuffer('test_luck',  0.78); }
 
 // Plays laugh via HTMLAudio so we know when it ends, then fires callback after extraMs
 export function sfxLaughWithDelay(callback, extraMs = 0) {

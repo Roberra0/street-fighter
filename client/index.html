@@ -21,10 +21,28 @@
     image-rendering: crisp-edges;
     -ms-interpolation-mode: nearest-neighbor;
   }
+  #mobile-block {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.92);
+    color: #fff;
+    font-family: monospace;
+    font-size: clamp(1.2rem, 5vw, 2rem);
+    text-align: center;
+    justify-content: center;
+    align-items: center;
+    z-index: 100;
+    padding: 2rem;
+  }
+  @media (max-width: 768px) {
+    #mobile-block { display: flex; }
+  }
 </style>
 </head>
 <body>
 <canvas id="c"></canvas>
+<div id="mobile-block">Sorry, only compatible on desktop</div>
 <script type="module" src="js/game.js?v=20260324-2229-8"></script>
 </body>
 </html>

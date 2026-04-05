@@ -394,21 +394,19 @@ export function drawTitle(ctx, drawBG, renderTime) {
   ctx.fillRect(GW / 2 - 120, panelTop, 240, 1);
 
   ctx.font = 'bold 7px monospace';
-  ctx.fillStyle = scoresHighlighted ? '#ffcc44' : '#886622';
+  ctx.fillStyle = '#886622';
   ctx.textAlign = 'center';
   ctx.fillText('TOP  SCORES', GW / 2, panelTop + 11);
 
   if (top3.length === 0) {
-    ctx.fillStyle = scoresHighlighted ? '#665533' : '#3a2a10';
+    ctx.fillStyle = '#3a2a10';
     ctx.font = '7px monospace';
     ctx.fillText('— NO SCORES YET —', GW / 2, panelTop + 30);
   } else {
     top3.forEach((entry, i) => {
       const y = panelTop + 24 + i * 16;
       ctx.font = 'bold 9px monospace';
-      ctx.fillStyle = scoresHighlighted
-        ? (i === 0 ? '#ffcc44' : '#998855')
-        : '#886622';
+      ctx.fillStyle = '#886622';
       ctx.fillText(
         String(i + 1) + '.  ' + entry.name + '  ' + String(entry.score).padStart(6, '0'),
         GW / 2, y
