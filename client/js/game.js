@@ -159,28 +159,74 @@ loadSpriteSheet(CHARACTERS['jensen']);
 loadSpriteSheet(CHARACTERS['skinny_jeff']);
 loadSpriteSheet(CHARACTERS['musk']);
 
-// ---- Asset loading gate ----
+// ---- Asset loading gate (fetch-based with progress tracking) ----
+// Fetching via fetch() populates the browser HTTP cache, so subsequent
+// new Image() calls in renderer.js and ui.js become instant cache hits.
+// TOTAL_ASSET_BYTES is hardcoded from filesystem (run: stat -f '%z' assets/... | awk '{sum+=$1}END{print sum}')
+// Update this when adding/replacing assets.
+const TOTAL_ASSET_BYTES = 163762904;
+const loadProgress = { loaded: 0, total: TOTAL_ASSET_BYTES, files: [], ready: false };
 let assetsReady = false;
-{
-  const allImgs = [
-    ...MAP_DEFS.map(m => m._img),
-    teslaImg,
-    zuckMobImg,
+
+(async () => {
+  const ALL_IMAGE_PATHS = [
+    // Maps
+    ...MAP_DEFS.map(m => m.src),
+    // Special sprites
+    'assets/characters/musk/tesla_sprite.png',
+    'assets/characters/zuck/influencer_mob.png',
+    // Screen images (loaded by ui.js)
+    'assets/screens/vs.png',
+    'assets/screens/map.png',
+    // Char select mugs + portraits (loaded by ui.js CHAR_DEFS)
+    'assets/characters/sam_altman/altman_mug.png',      'assets/characters/sam_altman/altman_fullbody.png',
+    'assets/characters/zuck/zuck_mug.png',              'assets/characters/zuck/zuck_fullbody.png',
+    'assets/characters/jacked_jeff/jacked_jeff_mug.png','assets/characters/jacked_jeff/jacked_jeff_fullbody.png',
+    'assets/characters/jensen/jensen_mug.png',          'assets/characters/jensen/jensen_fullbody.png',
+    'assets/characters/musk/elon_mugshot.png',          'assets/characters/musk/elon_fullbody.png',
+    'assets/characters/skinny_jeff/skinny_jeff_mug.png','assets/characters/skinny_jeff/skinny_jeff_fullbody.png',
+    'assets/characters/laker/laker_mug.png',            'assets/characters/laker/laker_fullbody.png',
+    'assets/characters/lady_kickboxer/kickboxer_mug.png','assets/characters/lady_kickboxer/kickboxer_fullbody.png',
+    'assets/characters/dread/dread_mug.png',            'assets/characters/dread/dread_fullbody.png',
+    'assets/characters/skater/skater_mug.png',          'assets/characters/skater/skater_fullbody.png',
+    'assets/characters/tech_bro/tech_mug.png',          'assets/characters/tech_bro/tech_fullbody.png',
+    // Character sprite sheets (from CHARACTERS defs)
     ...Object.values(CHARACTERS).flatMap(def => {
-      const imgs = [];
-      if (def._spriteImage)      imgs.push(def._spriteImage);
-      if (def._idleImage)        imgs.push(def._idleImage);
-      if (def._customSheetImage) imgs.push(def._customSheetImage);
-      if (def._animSheetImages)  imgs.push(...Object.values(def._animSheetImages));
-      if (def.overlay?._img)     imgs.push(def.overlay._img);
-      if (def.projectile?._imgs) imgs.push(...def.projectile._imgs);
-      return imgs;
+      const paths = [];
+      if (def.spriteSheet)      paths.push(def.spriteSheet);
+      if (def.idleSheet)        paths.push(def.idleSheet);
+      if (def.customSheet)      paths.push(def.customSheet);
+      if (def.animSheets)       paths.push(...Object.values(def.animSheets).map(s => s.src));
+      if (def.overlay?.src)     paths.push(def.overlay.src);
+      if (def.projectile?.srcs) paths.push(...def.projectile.srcs);
+      return paths;
     }),
   ];
-  Promise.all(allImgs.map(img => new Promise(res => {
-    if (img.complete) res(); else { img.onload = res; img.onerror = res; }
-  }))).then(() => { assetsReady = true; });
-}
+
+  // Fire all fetches in parallel; stream bodies and count bytes against fixed total
+  async function fetchAndStream(path) {
+    try {
+      const res = await fetch(path);
+      const size = parseInt(res.headers.get('content-length') || '0', 10);
+      const entry = { name: path.split('/').pop(), path, size, done: false };
+      loadProgress.files.push(entry);
+      const reader = res.body.getReader();
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        loadProgress.loaded += value.length;
+      }
+      entry.done = true;
+    } catch {
+      // Missing asset — renderer.js will throw a clear error when it tries to draw it
+    }
+  }
+
+  await Promise.all(ALL_IMAGE_PATHS.map(fetchAndStream));
+  loadProgress.files.sort((a, b) => b.size - a.size);
+  loadProgress.ready = true;
+  assetsReady = true;
+})();
 
 let p1 = new Fighter(CHARACTERS['altman'], 0);
 let p2 = new Fighter(CHARACTERS['altman'], 1);
@@ -660,9 +706,10 @@ function render(renderTime) {
 
   // Loading screen — wait for all assets, then gate on user interaction (unblocks audio autoplay)
   if (gameState === 'loading') {
-    drawLoading(ctx, assetsReady, renderTime);
+    drawLoading(ctx, loadProgress, renderTime);
     if (assetsReady && input.isAnyKey()) {
       audio.initAudio();
+      audio.playMusic('assets/audio/music/intro.mp3');
       gameState = 'title';
       input.clearFrame();
     }
@@ -681,8 +728,8 @@ function render(renderTime) {
 
   // Title screen
   if (gameState === 'title') {
-    if (input.isMenuUp())   menuUp();
-    if (input.isMenuDown()) menuDown();
+    if (input.isMenuUp())   { menuUp();   audio.sfxScroll(); }
+    if (input.isMenuDown()) { menuDown(); audio.sfxScroll(); }
     if (input.isMenuConfirm()) {
       const sel = getTitleMenuIndex();
       if (sel === 1) {
@@ -692,10 +739,8 @@ function render(renderTime) {
       } else {
         // 1 PLAYER
         gameMode    = '1p';
-        audio.initAudio();
         audio.sfxConfirmation();
         setTimeout(() => audio.sfxTestLuck(), 1000);
-        audio.playMusic('assets/audio/music/intro.mp3');
         p1SelIdx         = 0;
         p2SelIdx         = 1;
         p1Confirmed      = false;

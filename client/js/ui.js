@@ -18,26 +18,83 @@ export function getTitleMenuIndex() { return menuIndex; }
 export function menuUp()   { menuIndex = Math.max(0, menuIndex - 1); }
 export function menuDown() { menuIndex = Math.min(MENU_ITEMS.length - 1, menuIndex + 1); }
 
-export function drawLoading(ctx, ready, renderTime) {
+export function drawLoading(ctx, progress, renderTime) {
   ctx.fillStyle = '#000';
   ctx.fillRect(0, 0, GW, GH);
 
+  // Title
   ctx.textAlign = 'center';
   ctx.fillStyle = '#fff';
   ctx.font = 'bold 18px monospace';
-  ctx.fillText('STREET BRAWL', GW / 2, GH / 2 - 30);
+  ctx.fillText('STREET BRAWL', GW / 2, 28);
 
-  if (!ready) {
-    ctx.font = '10px monospace';
-    ctx.fillStyle = '#888';
-    const dots = '.'.repeat((Math.floor(renderTime / 400) % 4));
-    ctx.fillText('Loading' + dots, GW / 2, GH / 2 + 10);
-  } else {
+  if (progress.ready) {
     const blink = Math.floor(renderTime / 500) % 2 === 0;
     ctx.font = 'bold 11px monospace';
     ctx.fillStyle = blink ? '#ffcc44' : '#886622';
-    ctx.fillText('PRESS ANY KEY TO START', GW / 2, GH / 2 + 10);
+    ctx.fillText('PRESS ANY KEY TO START', GW / 2, GH / 2);
+    return;
   }
+
+  // Progress bar
+  const pct  = progress.total > 0 ? Math.min(progress.loaded / progress.total, 1) : 0;
+  const barW = 320, barH = 10;
+  const barX = (GW - barW) / 2, barY = 50;
+  ctx.fillStyle = '#222';
+  ctx.fillRect(barX, barY, barW, barH);
+  ctx.fillStyle = '#ffcc44';
+  ctx.fillRect(barX, barY, Math.round(barW * pct), barH);
+  ctx.strokeStyle = '#555';
+  ctx.lineWidth = 1;
+  ctx.strokeRect(barX, barY, barW, barH);
+
+  // Percentage + byte count
+  const mb = n => (n / 1048576).toFixed(1) + ' MB';
+  ctx.font = 'bold 9px monospace';
+  ctx.fillStyle = '#fff';
+  ctx.textAlign = 'center';
+  ctx.fillText(Math.round(pct * 100) + '%', GW / 2, barY + barH + 12);
+  ctx.font = '8px monospace';
+  ctx.fillStyle = '#888';
+  ctx.fillText(mb(progress.loaded) + ' / ' + mb(progress.total), GW / 2, barY + barH + 22);
+
+  // Category buckets
+  const BUCKETS = [
+    { label: 'Maps',              match: p => p.startsWith('assets/maps/') },
+    { label: 'Character Sprites', match: p => p.startsWith('assets/characters/') },
+    { label: 'Screens',          match: p => p.startsWith('assets/screens/') },
+    { label: 'Other',            match: () => true },
+  ];
+
+  const buckets = BUCKETS.map(b => {
+    const files = progress.files.filter(f => b.match(f.path));
+    const total = files.length;
+    const done  = files.filter(f => f.done).length;
+    const size  = files.reduce((s, f) => s + f.size, 0);
+    return { label: b.label, total, done, size, complete: total > 0 && done === total };
+  }).filter(b => b.total > 0);
+
+  const tableX = GW / 2 - 110, tableY = barY + barH + 38;
+  const rowH = 18;
+
+  buckets.forEach((b, i) => {
+    const y = tableY + i * rowH;
+    const sz = b.size >= 1048576 ? (b.size / 1048576).toFixed(1) + ' MB'
+             : b.size >= 1024    ? Math.round(b.size / 1024) + ' KB' : '';
+
+    ctx.font = 'bold 10px monospace';
+    ctx.fillStyle = b.complete ? '#aaffaa' : '#ffcc44';
+    ctx.textAlign = 'left';
+    ctx.fillText(b.complete ? '✓' : '↓', tableX, y);
+
+    ctx.fillStyle = b.complete ? '#aaa' : '#fff';
+    ctx.fillText(b.label, tableX + 16, y);
+
+    ctx.font = '9px monospace';
+    ctx.fillStyle = '#555';
+    ctx.textAlign = 'right';
+    ctx.fillText(sz, tableX + 220, y);
+  });
 }
 
 // drawHUD reads all its data from the sim state passed in.
