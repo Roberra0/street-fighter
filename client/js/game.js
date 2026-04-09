@@ -6,7 +6,7 @@ import { canvas, ctx, drawBG, setActiveBG, drawShadow, drawFighterPlaceholder, d
 import { pushApart, resolveHits, clampToWalls } from './collision.js';
 import * as audio    from './audio.js';
 import { spawnHitSpark, spawnBlockSpark, updateParticles, drawParticles, clearParticles } from './particles.js';
-import { drawHUD, drawMessage, drawKOScreen, drawTitle, drawCharSelect, drawMapSelect, drawPauseOverlay, drawControlsOverlay, drawHighScore, drawViewScores, drawLoading, drawSplash, getTitleMenuIndex, menuUp, menuDown } from './ui.js';
+import { drawHUD, drawMessage, drawTitle, drawCharSelect, drawMapSelect, drawPauseOverlay, drawControlsOverlay, drawHighScore, drawViewScores, drawLoading, drawSplash, getTitleMenuIndex, menuUp, menuDown, resetTitleMenu } from './ui.js';
 import { cpuSnapshot, getCpuDifficulty, setCpuDifficulty, resetCpuState } from './cpu.js';
 
 // ---- Constants ----
@@ -24,7 +24,7 @@ let roundTicks = 0;   // 60 ticks = 1 second
 let p1Wins = 0, p2Wins = 0, roundNum = 1;
 
 // ---- Character select state ----
-const CHAR_IDS = ['altman', 'zuck', 'jacked_jeff', 'jensen', 'musk', 'skinny_jeff', 'laker', 'lady_kickboxer', 'dread', 'skater', 'tech_bro', 'random'];
+const CHAR_IDS = ['altman', 'zuck', 'bezos', 'jensen', 'musk', 'young_bezos', 'rio', 'zuri', 'dre', 'sid', 'jax', 'random'];
 const CS_ROW_SIZES = [4, 4, 4];
 // Precompute row start indices
 const CS_ROW_STARTS = CS_ROW_SIZES.reduce((acc, s, i) => {
@@ -156,20 +156,20 @@ let paused       = false;
 let pauseMenuIndex = 0;
 let practiceMode = false;
 let showControls = false;
-let showDebug    = true;
+let showDebug    = false;
 
 // ---- Fighters ----
 // Preload sprite sheets for characters that have one
-loadSpriteSheet(CHARACTERS['laker']);
-loadSpriteSheet(CHARACTERS['lady_kickboxer']);
-loadSpriteSheet(CHARACTERS['dread']);
-loadSpriteSheet(CHARACTERS['skater']);
-loadSpriteSheet(CHARACTERS['tech_bro']);
+loadSpriteSheet(CHARACTERS['rio']);
+loadSpriteSheet(CHARACTERS['zuri']);
+loadSpriteSheet(CHARACTERS['dre']);
+loadSpriteSheet(CHARACTERS['sid']);
+loadSpriteSheet(CHARACTERS['jax']);
 loadSpriteSheet(CHARACTERS['zuck']);
 loadSpriteSheet(CHARACTERS['altman']);
-loadSpriteSheet(CHARACTERS['jacked_jeff']);
+loadSpriteSheet(CHARACTERS['bezos']);
 loadSpriteSheet(CHARACTERS['jensen']);
-loadSpriteSheet(CHARACTERS['skinny_jeff']);
+loadSpriteSheet(CHARACTERS['young_bezos']);
 loadSpriteSheet(CHARACTERS['musk']);
 
 // ---- Asset loading gate (fetch-based with progress tracking) ----
@@ -197,15 +197,15 @@ let assetsReady = false;
     // Char select mugs + portraits (loaded by ui.js CHAR_DEFS)
     'assets/characters/sam_altman/altman_mug.png',      'assets/characters/sam_altman/altman_fullbody.png',
     'assets/characters/zuck/zuck_mug.png',              'assets/characters/zuck/zuck_fullbody.png',
-    'assets/characters/jacked_jeff/jacked_jeff_mug.png','assets/characters/jacked_jeff/jacked_jeff_fullbody.png',
+    'assets/characters/bezos/jacked_jeff_mug.png','assets/characters/bezos/jacked_jeff_fullbody.png',
     'assets/characters/jensen/jensen_mug.png',          'assets/characters/jensen/jensen_fullbody.png',
     'assets/characters/musk/elon_mugshot.png',          'assets/characters/musk/elon_fullbody.png',
-    'assets/characters/skinny_jeff/skinny_jeff_mug.png','assets/characters/skinny_jeff/skinny_jeff_fullbody.png',
-    'assets/characters/laker/laker_mug.png',            'assets/characters/laker/laker_fullbody.png',
-    'assets/characters/lady_kickboxer/kickboxer_mug.png','assets/characters/lady_kickboxer/kickboxer_fullbody.png',
-    'assets/characters/dread/dread_mug.png',            'assets/characters/dread/dread_fullbody.png',
-    'assets/characters/skater/skater_mug.png',          'assets/characters/skater/skater_fullbody.png',
-    'assets/characters/tech_bro/tech_mug.png',          'assets/characters/tech_bro/tech_fullbody.png',
+    'assets/characters/young_bezos/skinny_jeff_mug.png','assets/characters/young_bezos/skinny_jeff_fullbody.png',
+    'assets/characters/rio/laker_mug.png',            'assets/characters/rio/laker_fullbody.png',
+    'assets/characters/zuri/kickboxer_mug.png','assets/characters/zuri/kickboxer_fullbody.png',
+    'assets/characters/dre/dread_mug.png',            'assets/characters/dre/dread_fullbody.png',
+    'assets/characters/sid/skater_mug.png',          'assets/characters/sid/skater_fullbody.png',
+    'assets/characters/jax/tech_mug.png',          'assets/characters/jax/tech_fullbody.png',
     // Character sprite sheets (from CHARACTERS defs)
     ...Object.values(CHARACTERS).flatMap(def => {
       const paths = [];
@@ -252,9 +252,7 @@ let acc  = 0;
 let last = 0;
 
 // ---- Debug: last known input snapshot for P1 (render-only, visual debug) ----
-let debugInp = { left: false, right: false, up: false, down: false,
-                 punch: false, heavyPunch: false, kick: false, heavyKick: false, block: false };
-
+let debugInp = null;
 // Flash timers for edge-triggered buttons — keep them lit for ~15 frames (~250ms) so they're visible
 const FLASH_FRAMES = 15;
 const debugFlash = { punch: 0, heavyPunch: 0, kick: 0, heavyKick: 0, block: 0 };
@@ -764,6 +762,7 @@ function render(renderTime) {
       } else {
         // Past last strip — go to title
         audio.playMusic('assets/audio/music/Rage_main_intro.mp4');
+        resetTitleMenu();
         gameState = 'title';
         input.clearFrame();
       }
@@ -783,6 +782,7 @@ function render(renderTime) {
   // View scores (from title TOP SCORES → SEE MORE)
   if (gameState === 'viewScores') {
     if (input.isMenuConfirm() || input.isEscapeKey()) {
+      resetTitleMenu();
       gameState = 'title';
       input.clearFrame();
     }
@@ -794,6 +794,7 @@ function render(renderTime) {
 
   // Title screen
   if (gameState === 'title') {
+    if (menuNavCooldown > 0) menuNavCooldown--;
     if (input.isEscapeKey()) {
       splashIdx = 0;
       splashStartTime = renderTime;
@@ -801,8 +802,8 @@ function render(renderTime) {
       gameState = 'splash';
       input.clearFrame();
     }
-    if (input.isMenuUp())   { menuUp();   audio.sfxScroll(); }
-    if (input.isMenuDown()) { menuDown(); audio.sfxScroll(); }
+    if (menuNavCooldown === 0 && input.isMenuUp())   { menuUp();   audio.sfxScroll(); menuNavCooldown = MENU_NAV_DELAY; }
+    if (menuNavCooldown === 0 && input.isMenuDown()) { menuDown(); audio.sfxScroll(); menuNavCooldown = MENU_NAV_DELAY; }
     if (input.isMenuConfirm()) {
       const sel = getTitleMenuIndex();
       if (sel === 3) {
@@ -840,6 +841,7 @@ function render(renderTime) {
         p2Confirmed     = false;
         charSelectDelay = 0;
       } else {
+        resetTitleMenu();
         gameState = 'title';
         menuNavCooldown = MENU_NAV_DELAY;
         input.clearFrame();
@@ -990,6 +992,7 @@ function render(renderTime) {
     }
     if (input.isEscapeKey()) {
       audio.playMusic('assets/audio/music/Rage_main_intro.mp4');
+      resetTitleMenu();
       gameState = 'title';
     }
   }
@@ -1040,16 +1043,6 @@ function render(renderTime) {
   ctx.save();
   ctx.translate(osX, 0);
 
-  // KO door-slide renders outside screen shake transform
-  if (koSlideFrame !== null) {
-    koSlideFrame = drawKOScreen(ctx, koSlideFrame);
-  }
-
-  // Debug input display (bottom-left corner, fight state only)
-  if (gameState === 'fight' || gameState === 'roundEnd') {
-    drawDebugInput(ctx, debugInp, p1);
-  }
-
   // Pause toggle (1P only, during fight)
   if (gameMode === '1p' && gameState === 'fight' && (input.isPauseKey() || input.isEscapeKey())) {
     paused = !paused;
@@ -1068,7 +1061,7 @@ function render(renderTime) {
     }
     if (input.isMenuConfirm()) {
       if (pauseMenuIndex === 0) paused = false; // Resume
-      if (pauseMenuIndex === maxIdx) { paused = false; setActiveBG(null); audio.playMusic('assets/audio/music/Rage_main_intro.mp4'); gameState = 'title'; } // Quit
+      if (pauseMenuIndex === maxIdx) { paused = false; setActiveBG(null); audio.playMusic('assets/audio/music/Rage_main_intro.mp4'); resetTitleMenu(); gameState = 'title'; } // Quit
     }
     if (input.isEscapeKey()) { paused = false; }
     drawPauseOverlay(ctx, { pauseMenuIndex, difficulty: getCpuDifficulty(), practiceMode });
@@ -1090,40 +1083,6 @@ function render(renderTime) {
   }
 
   ctx.restore(); // end post-shake overscan
-}
-
-// ---- Debug input display ----
-function drawDebugInput(ctx, inp, fighter) {
-  const x = 8, y = GH - 8;
-  ctx.save();
-  ctx.font = 'bold 8px monospace';
-  ctx.textAlign = 'left';
-
-  const buttons = [
-    { label: '←',  on: inp.left },
-    { label: '→',  on: inp.right },
-    { label: '↑',  on: inp.up },
-    { label: '↓',  on: inp.down },
-    { label: 'A',  on: inp.punch      || debugFlash.punch      > 0 },
-    { label: 'A↑', on: inp.heavyPunch || debugFlash.heavyPunch > 0 },
-    { label: 'S',  on: inp.kick       || debugFlash.kick       > 0 },
-    { label: 'S↑', on: inp.heavyKick  || debugFlash.heavyKick  > 0 },
-    { label: 'X',  on: inp.block      || debugFlash.block      > 0 },
-  ];
-
-  let cx = x;
-  for (const btn of buttons) {
-    ctx.fillStyle = btn.on ? '#ffe040' : '#ffffff44';
-    ctx.fillText(btn.label, cx, y);
-    cx += 14;
-  }
-
-  // Show fighter state + buffer
-  const bufLabel = fighter.inputBuffer ? `[${fighter.inputBuffer}]` : '';
-  ctx.fillStyle = '#ffffff88';
-  ctx.fillText(`${fighter._state} ${bufLabel}`, cx + 4, y);
-
-  ctx.restore();
 }
 
 // ---- Debug: hitbox visualizer ----
@@ -1198,7 +1157,6 @@ function drawDebugConsole(f1, f2) {
     rows.push({ text: `  frame:  ${f.animFrame}`, color: '#fff' });
     rows.push({ text: `  pos:    ${Math.round(f.x)}, ${Math.round(f.y)}`, color: '#fff' });
     rows.push({ text: `  hp:     ${f.hp} / ${f.def.stats.hp}`, color: '#fff' });
-    rows.push({ text: `  meter:  ${Math.round(f.meter || 0)}`, color: '#fff' });
     if (f.stunTimer > 0)
       rows.push({ text: `  stun:   ${f.stunTimer}`, color: '#ff5555' });
     rows.push({ text: '', color: '#fff' });

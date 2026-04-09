@@ -1,0 +1,75 @@
+export default {
+  id: 'sid',
+  voiceSet: 'set_smaller',
+  displayName: 'SID',
+  startX: 140,
+  facing: 1,
+  stats: {
+    hp: 200,
+    walkSpeed: 3.2,
+    jumpVy: -13.23,
+    jumpVx: 3.2,
+  },
+  palette: {
+    skin:   '#d4956a',
+    hair:   '#1a1a1a',
+    outfit: '#2a2a2a',
+    accent: '#ff4400',
+  },
+  hurtboxW: 70, hurtboxH: 195,
+  crouchHurtboxW: 76, crouchHurtboxH: 108,
+  holdWalkFrame: 15,
+  moves: {
+    punch: {
+      startup: 2, active: 5, recovery: 5,
+      damage: 7, knockback: 2.0,
+      hitboxOffsetX: 30, hitboxW: 63, hitboxY: -150, hitboxH: 30,
+    },
+    heavyPunch: {
+      startup: 5, active: 4, recovery: 7,
+      damage: 15, knockback: 4.0,
+      hitboxOffsetX: 28, hitboxW: 70, hitboxY: -155, hitboxH: 35,
+    },
+    kick: {
+      startup: 2, active: 5, recovery: 8,
+      damage: 13, knockback: 3.8,
+      hitboxOffsetX: 25, hitboxW: 75, hitboxY: -65, hitboxH: 35,
+    },
+    heavyKick: {
+      startup: 6, active: 6, recovery: 9,
+      damage: 22, knockback: 7.0,
+      hitboxOffsetX: 20, hitboxW: 95, hitboxY: -80, hitboxH: 45,
+    },
+  },
+  holdCrouchFrame: 12,  // frame 12 of 25 = fully crouched pose
+  holdBlockFrame:  21,  // frame 21 of 22 = last frame
+  animations: {
+    idle:       { frames: 20, fps: 24, loop: true, frameDurations: [120, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3] },
+    walk:       { frames: 23, fps: 30, loop: true  },
+    crouch:     { frames: 25, fps: 60, loop: true  },
+    jump:       { frames: 25, fps: 30, loop: false },
+    punch:      { frames: 20, fps: 60, loop: false },
+    heavyPunch: { frames: 20, fps: 60, loop: false },
+    kick:       { frames: 15, fps: 60, loop: false },
+    heavyKick:  { frames: 15, fps: 60, loop: false },
+    block:      { frames: 22, fps: 80, loop: false },
+    hit:        { frames: 20, fps: 60, loop: false },
+    airHit:     { frames: 20, fps: 60, loop: false },
+    ko:         { frames: 20, fps: 8,  loop: false },
+  },
+
+  animSheetDivisor: 1,
+  animSheetOffsetY: 0,
+  animSheetCropX:   50,
+  animSheetCropW:   280,
+  animSheets: {
+    idle:   { src: 'assets/characters/sid/skater_jump',    cols: 20, frameW: 382, frameH: 216 },
+    walk:   { src: 'assets/characters/sid/skater_walk',    cols: 23, frameW: 382, frameH: 216 },
+    crouch: { src: 'assets/characters/sid/SKATER_CROUCH1', cols: 25, frameW: 382, frameH: 216 },
+    jump:   { src: 'assets/characters/sid/SKATER_JUMP2',   cols: 25, frameW: 382, frameH: 216 },
+    punch:  { src: 'assets/characters/sid/SKATER_PUNCH4',  cols: 20, frameW: 382, frameH: 216 },
+    kick:   { src: 'assets/characters/sid/SKATER_KICK3',   cols: 15, frameW: 382, frameH: 216 },
+    block:  { src: 'assets/characters/sid/skater_block.png', cols: 22, frameW: 382, frameH: 216 },
+  },
+  portrait: null,
+};

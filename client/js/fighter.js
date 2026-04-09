@@ -13,17 +13,17 @@ window.downloadAltmanLog = () => {
 };
 window.addEventListener('keydown', e => { if (e.key === 'L') window.downloadAltmanLog(); });
 
-import lakerDef        from '../assets/characters/laker/def.js';
-import ladyKickboxerDef from '../assets/characters/lady_kickboxer/def.js';
-import dreadDef         from '../assets/characters/dread/def.js';
-import skaterDef        from '../assets/characters/skater/def.js';
-import techBroDef       from '../assets/characters/tech_bro/def.js';
-import zuckDef          from '../assets/characters/zuck/def.js';
-import altmanDef        from '../assets/characters/sam_altman/def.js';
-import jackedJeffDef    from '../assets/characters/jacked_jeff/def.js';
-import jensenDef        from '../assets/characters/jensen/def.js';
-import skinnyJeffDef    from '../assets/characters/skinny_jeff/def.js';
-import muskDef          from '../assets/characters/musk/def.js';
+import rioDef        from '../assets/characters/rio/def.js';
+import zuriDef       from '../assets/characters/zuri/def.js';
+import dreDef        from '../assets/characters/dre/def.js';
+import sidDef        from '../assets/characters/sid/def.js';
+import jaxDef        from '../assets/characters/jax/def.js';
+import zuckDef       from '../assets/characters/zuck/def.js';
+import altmanDef     from '../assets/characters/sam_altman/def.js';
+import bezosDef      from '../assets/characters/bezos/def.js';
+import jensenDef     from '../assets/characters/jensen/def.js';
+import youngBezosDef from '../assets/characters/young_bezos/def.js';
+import muskDef       from '../assets/characters/musk/def.js';
 import {
   checkDoubleTap, isDirEdge,
   clearMotionOnUse,
@@ -32,17 +32,17 @@ import {
 
 // ---- Character registry ----
 export const CHARACTERS = {
-  laker:          lakerDef,
-  lady_kickboxer: ladyKickboxerDef,
-  dread:          dreadDef,
-  skater:         skaterDef,
-  tech_bro:       techBroDef,
-  zuck:           zuckDef,
-  altman:         altmanDef,
-  jacked_jeff:    jackedJeffDef,
-  jensen:         jensenDef,
-  skinny_jeff:    skinnyJeffDef,
-  musk:           muskDef,
+  rio:          rioDef,
+  zuri:         zuriDef,
+  dre:          dreDef,
+  sid:          sidDef,
+  jax:          jaxDef,
+  zuck:         zuckDef,
+  altman:       altmanDef,
+  bezos:        bezosDef,
+  jensen:       jensenDef,
+  young_bezos:  youngBezosDef,
+  musk:         muskDef,
 };
 
 // ---- Physics constants (must match game.js / collision.js) ----
@@ -67,7 +67,6 @@ export class Fighter {
     this.vx       = 0;
     this.vy       = 0;
     this.hp       = this.def.stats.hp;
-    this.meter    = 0;   // 0–100 super meter
     this._state   = 'idle';
     this.timer    = 0;
     this.didHit   = false;
@@ -77,7 +76,6 @@ export class Fighter {
     this.stunTimer   = 0;
     this.pushVx      = 0;
     this.runBurst    = 0;  // frames remaining of fast-walk dash burst
-    this.currentSpecial = null;  // active special/super definition
     this.crouchAttack   = false; // was crouching when attack started (lower hitbox)
     this.tookDamage     = false; // true if hit at least once this round
     this.inputBuffer      = null; // buffered attack type ('punch', 'heavyPunch', 'kick', 'heavyKick')
@@ -608,11 +606,6 @@ export class Fighter {
       this.state = 'hit';
     }
     events.push({ type: 'recoil_grunt', voiceSet: this.def.voiceSet ?? this.def.voice });
-
-    // Attacker gains meter for dealing damage
-    if (attacker && attacker.meter !== undefined) {
-      attacker.meter = Math.min(100, attacker.meter + actualDmg * 1.5);
-    }
 
     if (this.hp <= 0) {
       this.state = 'ko';

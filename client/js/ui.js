@@ -16,8 +16,9 @@ rageLogo.src = 'assets/screens/Rage_Logo.png';
 const MENU_ITEMS = ['VERSUS MODE', 'PRACTICE MODE', 'STORY MODE'];
 let menuIndex = 0;
 
-// Returns the currently highlighted menu option index (0 = 1P, 1 = TOP SCORES).
+// Returns the currently highlighted menu option index (0 = VERSUS, 1 = PRACTICE, 2 = STORY, 3 = SEE MORE).
 export function getTitleMenuIndex() { return menuIndex; }
+export function resetTitleMenu() { menuIndex = 0; }
 
 const DISABLED_ITEMS = new Set([2]); // STORY MODE index
 // Extra virtual slot after MENU_ITEMS for "SEE MORE" scores
@@ -322,54 +323,6 @@ export function drawHUD(ctx, { p1, p2, p1Wins, p2Wins, roundTimer, roundNum, ren
   }
 
   // Super meters — bottom of screen, P1 left / P2 right
-  const mW = 220, mH = 14;
-  const mY = GH - mH - 6;
-
-  // P1 super
-  ctx.fillStyle = '#181818';
-  ctx.fillRect(7, mY - 1, mW + 2, mH + 2);
-  ctx.fillStyle = '#111122';
-  ctx.fillRect(8, mY, mW, mH);
-  const m1 = Math.max(0, (p1.meter / 100) * mW);
-  const p1Full = p1.meter >= 100;
-  if (m1 > 0) {
-    ctx.fillStyle = p1Full ? (Math.floor(renderTime / 150) % 2 === 0 ? '#44ee22' : '#22cc44') : '#22cc44';
-    ctx.fillRect(8, mY, m1, mH);
-    ctx.fillStyle = '#88ff66';
-    ctx.fillRect(8, mY, m1, 1);
-  }
-  if (p1Full) {
-    ctx.fillStyle = '#ffffff';
-    ctx.font = 'bold 8px monospace';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText('MAX', 8 + mW / 2, mY + mH / 2);
-    ctx.textBaseline = 'alphabetic';
-  }
-
-  // P2 super (right-aligned, fills right-to-left)
-  const p2MX = GW - 8 - mW;
-  ctx.fillStyle = '#181818';
-  ctx.fillRect(p2MX - 1, mY - 1, mW + 2, mH + 2);
-  ctx.fillStyle = '#111122';
-  ctx.fillRect(p2MX, mY, mW, mH);
-  const m2 = Math.max(0, (p2.meter / 100) * mW);
-  const p2Full = p2.meter >= 100;
-  if (m2 > 0) {
-    ctx.fillStyle = p2Full ? (Math.floor(renderTime / 150) % 2 === 0 ? '#44ee22' : '#22cc44') : '#22cc44';
-    ctx.fillRect(p2MX + (mW - m2), mY, m2, mH);
-    ctx.fillStyle = '#88ff66';
-    ctx.fillRect(p2MX + (mW - m2), mY, m2, 1);
-  }
-  if (p2Full) {
-    ctx.fillStyle = '#ffffff';
-    ctx.font = 'bold 8px monospace';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText('MAX', p2MX + mW / 2, mY + mH / 2);
-    ctx.textBaseline = 'alphabetic';
-  }
-
   // ── Timer circle ─────────────────────────────────────────────────────────────
   // Outer dark ring
   ctx.fillStyle = '#3a2200';
@@ -637,15 +590,15 @@ export function drawControlsOverlay(ctx, p1Def, p2Def) {
 const CHAR_DEFS = [
   { id: 'altman',        name: 'ALTMAN',   color: '#1a1a1a', accent: '#aaffaa', mug: 'assets/characters/sam_altman/altman_mug.png',           portrait: 'assets/characters/sam_altman/altman_fullbody.png' },
   { id: 'zuck',          name: 'ZUCK',     color: '#1877f2', accent: '#ffffff', mug: 'assets/characters/zuck/zuck_mug.png',                   portrait: 'assets/characters/zuck/zuck_fullbody.png' },
-  { id: 'jacked_jeff',   name: 'JACKED J', color: '#d4af37', accent: '#222222', mug: 'assets/characters/jacked_jeff/jacked_jeff_mug.png',     portrait: 'assets/characters/jacked_jeff/jacked_jeff_fullbody.png' },
+  { id: 'bezos',         name: 'BEZOS',    color: '#d4af37', accent: '#222222', mug: 'assets/characters/bezos/jacked_jeff_mug.png',     portrait: 'assets/characters/bezos/jacked_jeff_fullbody.png' },
   { id: 'jensen',        name: 'JENSEN',   color: '#1a1a22', accent: '#76b900', mug: 'assets/characters/jensen/jensen_mug.png',               portrait: 'assets/characters/jensen/jensen_fullbody.png' },
   { id: 'musk',          name: 'MUSK',     color: '#1a1a2e', accent: '#cc0000', mug: 'assets/characters/musk/elon_mugshot.png',               portrait: 'assets/characters/musk/elon_fullbody.png' },
-  { id: 'skinny_jeff',   name: 'SLIM JEFF',color: '#232f3e', accent: '#ff9900', mug: 'assets/characters/skinny_jeff/skinny_jeff_mug.png',     portrait: 'assets/characters/skinny_jeff/skinny_jeff_fullbody.png', mugScale: 0.85 },
-  { id: 'laker',         name: 'LAKER',    color: '#552583', accent: '#FDB927', mug: 'assets/characters/laker/laker_mug.png',                 portrait: 'assets/characters/laker/laker_fullbody.png' },
-  { id: 'lady_kickboxer',name: 'LADY K',   color: '#2a2aaa', accent: '#ee2222', mug: 'assets/characters/lady_kickboxer/kickboxer_mug.png',   portrait: 'assets/characters/lady_kickboxer/kickboxer_fullbody.png' },
-  { id: 'dread',         name: 'DREAD',    color: '#1a3a1a', accent: '#cc8800', mug: 'assets/characters/dread/dread_mug.png',                 portrait: 'assets/characters/dread/dread_fullbody.png' },
-  { id: 'skater',        name: 'SKATER',   color: '#2a2a2a', accent: '#ff4400', mug: 'assets/characters/skater/skater_mug.png',               portrait: 'assets/characters/skater/skater_fullbody.png' },
-  { id: 'tech_bro',      name: 'TECH BRO', color: '#2c3e50', accent: '#3498db', mug: 'assets/characters/tech_bro/tech_mug.png',              portrait: 'assets/characters/tech_bro/tech_fullbody.png' },
+  { id: 'young_bezos',   name: 'YOUNG BEZOS',color: '#232f3e', accent: '#ff9900', mug: 'assets/characters/young_bezos/skinny_jeff_mug.png',     portrait: 'assets/characters/young_bezos/skinny_jeff_fullbody.png', mugScale: 0.85 },
+  { id: 'rio',           name: 'RIO',      color: '#552583', accent: '#FDB927', mug: 'assets/characters/rio/laker_mug.png',                 portrait: 'assets/characters/rio/laker_fullbody.png' },
+  { id: 'zuri',          name: 'ZURI',     color: '#2a2aaa', accent: '#ee2222', mug: 'assets/characters/zuri/kickboxer_mug.png',   portrait: 'assets/characters/zuri/kickboxer_fullbody.png' },
+  { id: 'dre',           name: 'DRE',      color: '#1a3a1a', accent: '#cc8800', mug: 'assets/characters/dre/dread_mug.png',                 portrait: 'assets/characters/dre/dread_fullbody.png' },
+  { id: 'sid',           name: 'SID',      color: '#2a2a2a', accent: '#ff4400', mug: 'assets/characters/sid/skater_mug.png',               portrait: 'assets/characters/sid/skater_fullbody.png' },
+  { id: 'jax',           name: 'JAX',      color: '#2c3e50', accent: '#3498db', mug: 'assets/characters/jax/tech_mug.png',              portrait: 'assets/characters/jax/tech_fullbody.png' },
   { id: 'random',        name: 'RANDOM',   color: '#111111', accent: '#ffffff', mug: null, portrait: null },
 ];
 
