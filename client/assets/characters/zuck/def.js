@@ -48,6 +48,7 @@ export default {
   animSheetOffsetY: 0,   // TODO: tune vertical offset
   animSheetCropX:   50,  // TODO: tune horizontal crop
   animSheetCropW:   280, // TODO: tune visible width
+  animSheetFadeR:   20,  // gradient fade on right edge to soften crop line
   animSheets: {
     walk:    { src: 'assets/characters/zuck/zuck2_walk.png',   cols: 25, frameW: 382, frameH: 216 },
     punch:   { src: 'assets/characters/zuck/zuck2_punch.png',  cols: 25, frameW: 382, frameH: 216 },

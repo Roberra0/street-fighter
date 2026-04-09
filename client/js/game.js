@@ -2,7 +2,7 @@
 
 import { Fighter, CHARACTERS } from './fighter.js';
 import * as input    from './input.js';
-import { canvas, ctx, drawBG, setActiveBG, drawShadow, drawFighterPlaceholder, drawProjectiles, drawOverlays, loadSpriteSheet, applyScreenShake, updateCamera, getCameraX, getStageWidth } from './renderer.js';
+import { canvas, ctx, drawBG, setActiveBG, drawShadow, drawFighterPlaceholder, drawProjectiles, drawOverlays, loadSpriteSheet, applyScreenShake, updateCamera, getCameraX, getStageWidth, getOverscanX } from './renderer.js';
 import { pushApart, resolveHits, clampToWalls } from './collision.js';
 import * as audio    from './audio.js';
 import { spawnHitSpark, spawnBlockSpark, updateParticles, drawParticles, clearParticles } from './particles.js';
@@ -710,7 +710,7 @@ function drawZuckMob(renderTime) {
   // Stamp onto main canvas, bypassing screen-shake transform
   ctx.save();
   ctx.setTransform(1, 0, 0, 1, 0, 0);
-  ctx.drawImage(oc, dx, dy);
+  ctx.drawImage(oc, dx + getOverscanX(), dy);
   ctx.restore();
 }
 
@@ -721,13 +721,21 @@ function render(renderTime) {
   const smooth = gameState === 'loading' || gameState === 'splash';
   canvas.style.imageRendering = smooth ? 'auto' : 'pixelated';
 
+  // Clear full canvas (including overscan wings)
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  // Center game area in wider canvas (overscan for ultra-wide monitors)
+  const osX = getOverscanX();
+
   // Decay screen shake
   screenShake *= 0.8;
   if (screenShake < 0.4) screenShake = 0;
 
   // Loading screen — wait for all assets, then gate on user interaction (unblocks audio autoplay)
   if (gameState === 'loading') {
+    ctx.save(); ctx.translate(osX, 0);
     drawLoading(ctx, loadProgress, renderTime);
+    ctx.restore();
     if (assetsReady && input.isAnyKey()) {
       audio.initAudio();
       splashIdx = 0;
@@ -766,7 +774,9 @@ function render(renderTime) {
     }
     input.clearFrame();
     const stripAge = renderTime - splashStartTime;
+    ctx.save(); ctx.translate(osX, 0);
     drawSplash(ctx, splashImgs[Math.min(splashIdx, splashImgs.length - 1)], splashIdx, splashImgs.length, stripAge);
+    ctx.restore();
     return;
   }
 
@@ -776,7 +786,9 @@ function render(renderTime) {
       gameState = 'title';
       input.clearFrame();
     }
+    ctx.save(); ctx.translate(osX, 0);
     drawViewScores(ctx, renderTime);
+    ctx.restore();
     return;
   }
 
@@ -813,7 +825,9 @@ function render(renderTime) {
         input.clearFrame();
       }
     }
+    ctx.save(); ctx.translate(osX, 0);
     drawTitle(ctx, drawBG, renderTime);
+    ctx.restore();
     return;
   }
 
@@ -857,9 +871,11 @@ function render(renderTime) {
         input.clearFrame();
       }
     }
+    ctx.save(); ctx.translate(osX, 0);
     drawCharSelect(ctx, drawBG, renderTime, {
       p1SelIdx, p2SelIdx, p1Confirmed, p2Confirmed, gameMode,
     });
+    ctx.restore();
     return;
   }
 
@@ -900,7 +916,9 @@ function render(renderTime) {
       input.clearFrame();
       audio.sfxLaughWithDelay(() => { mapConfirmed = false; startRound(); }, 1000);
     }
+    ctx.save(); ctx.translate(osX, 0);
     drawMapSelect(ctx, renderTime, { mapSelIdx, maps: MAP_DEFS });
+    ctx.restore();
     return;
   }
 
@@ -941,7 +959,9 @@ function render(renderTime) {
     // Smooth auto-scroll to center the player's entry row
     const targetScroll = Math.max(0, 70 + hsInsertIdx * 24 - 180);
     hsScrollOffset += (targetScroll - hsScrollOffset) * 0.08;
+    ctx.save(); ctx.translate(osX, 0);
     drawHighScore(ctx, renderTime, { scores: hsScores, playerScore: p1Score, initials: hsInitials, cursor: hsCursor, insertIdx: hsInsertIdx, scrollOffset: Math.round(hsScrollOffset) });
+    ctx.restore();
     return;
   }
 
@@ -988,9 +1008,10 @@ function render(renderTime) {
   const camX = getCameraX();
 
   ctx.save();
+  ctx.translate(osX, 0);
   applyScreenShake(screenShake);
 
-  // Background draws in screen space (parallax handled internally)
+  // Background draws in screen space (parallax handled internally, fills overscan)
   drawBG(renderTime);
 
   // World-space objects: translate by camera
@@ -1010,10 +1031,14 @@ function render(renderTime) {
   // Suppress text message while KO door-slide is running
   if (koSlideFrame === null) drawMessage(ctx, msgText);
 
-  ctx.restore();
+  ctx.restore(); // end shake + overscan block
 
   // Zuck mob overlay — drawn outside screen-shake block so KO slide can't bury it
   drawZuckMob(renderTime);
+
+  // Post-shake screen-space elements — apply overscan offset
+  ctx.save();
+  ctx.translate(osX, 0);
 
   // KO door-slide renders outside screen shake transform
   if (koSlideFrame !== null) {
@@ -1063,6 +1088,8 @@ function render(renderTime) {
     ctx.restore();
     drawDebugConsole(p1, p2);
   }
+
+  ctx.restore(); // end post-shake overscan
 }
 
 // ---- Debug input display ----

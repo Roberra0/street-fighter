@@ -7,15 +7,32 @@ const GROUND = 340;
 export const canvas = document.getElementById('c');
 export const ctx    = canvas.getContext('2d');
 
-canvas.width  = GW;
-canvas.height = GH;
+// ---- Overscan: expand canvas to fill window width with extra panorama ----
+let _overscanX = 0;  // extra pixels on each side of the 640 game area
+export function getOverscanX() { return _overscanX; }
 
 export function resize() {
-  const s  = Math.min(window.innerWidth / GW, window.innerHeight / GH);
-  const sw = Math.floor(GW * s);
-  const sh = Math.floor(GH * s);
-  canvas.style.width  = sw + 'px';
-  canvas.style.height = sh + 'px';
+  const windowAR = window.innerWidth / window.innerHeight;
+  const gameAR   = GW / GH;
+
+  if (windowAR > gameAR) {
+    // Window wider than 16:9 — expand canvas to fill, show more panorama
+    const canvasW = Math.round(GH * windowAR);
+    _overscanX = Math.round((canvasW - GW) / 2);
+    canvas.width  = canvasW;
+    canvas.height = GH;
+    const s = window.innerHeight / GH;
+    canvas.style.width  = Math.floor(canvasW * s) + 'px';
+    canvas.style.height = Math.floor(GH * s) + 'px';
+  } else {
+    // Normal or tall window — fit as before
+    _overscanX = 0;
+    canvas.width  = GW;
+    canvas.height = GH;
+    const s = Math.min(window.innerWidth / GW, window.innerHeight / GH);
+    canvas.style.width  = Math.floor(GW * s) + 'px';
+    canvas.style.height = Math.floor(GH * s) + 'px';
+  }
 }
 
 resize();
@@ -30,6 +47,9 @@ const WALL_PAD = 24;
 const BG_PARALLAX = 0.8; // BG scrolls slower than fighters for depth
 let _stageWidth = null;   // computed from active map aspect ratio
 let _cameraX = 0;         // world-space X of viewport left edge
+
+// ---- Sprite rendering ----
+let _fadeOC = null;  // offscreen canvas for applying edge fade to sprites
 
 export function getStageWidth() {
   if (_stageWidth !== null) return _stageWidth;
@@ -47,32 +67,42 @@ export function getCameraX() { return _cameraX; }
 
 export function updateCamera(p1, p2) {
   const mid = (p1.x + p2.x) / 2;
-  const maxCam = getStageWidth() - GW;
-  _cameraX = Math.max(0, Math.min(maxCam, mid - GW / 2));
+  const sw = getStageWidth();
+  const ox = _overscanX;
+  // Clamp so the visible area (including overscan wings) stays within the stage
+  const minCam = ox;
+  const maxCam = Math.max(minCam, sw - GW - ox);
+  _cameraX = Math.max(minCam, Math.min(maxCam, mid - GW / 2));
 }
 
 // ---- Background (parallax) ----
 
 export function drawBG() {
+  const ox = _overscanX;
+  const viewW = GW + 2 * ox; // full visible width including overscan wings
+
   if (_activeBG && _activeBG.complete && _activeBG.naturalWidth > 0) {
     ctx.imageSmoothingEnabled = true;
-    const sw = getStageWidth();
-    const maxCam = sw - GW;
-    // Parallax: BG scrolls at a fraction of camera movement
-    const bgOffset = maxCam > 0 ? (_cameraX / maxCam) * (_activeBG.naturalWidth - _activeBG.naturalWidth * (GW / sw)) : 0;
-    const srcX = Math.round(bgOffset);
-    const srcW = Math.round(_activeBG.naturalWidth * (GW / sw));
-    ctx.drawImage(_activeBG, srcX, 0, srcW, _activeBG.naturalHeight, 0, 0, GW, GH);
+    const natW = _activeBG.naturalWidth;
+    const natH = _activeBG.naturalHeight;
+    const sw   = getStageWidth();
+    const scale = natW / sw; // world-to-source-pixel ratio
+
+    // Source rect: map the visible world range to source pixels
+    const worldLeft = _cameraX - ox;
+    const srcX = Math.max(0, Math.round(worldLeft * scale));
+    const srcW = Math.min(Math.round(viewW * scale), natW - srcX);
+    ctx.drawImage(_activeBG, srcX, 0, srcW, natH, -ox, 0, viewW, GH);
   } else {
     ctx.fillStyle = '#0e0620';
-    ctx.fillRect(0, 0, GW, GH);
+    ctx.fillRect(-ox, 0, viewW, GH);
   }
   // Ground shadow strip so fighters have a visual floor reference
   const g = ctx.createLinearGradient(0, GROUND - 8, 0, GH);
   g.addColorStop(0, '#00000000');
   g.addColorStop(1, '#00000088');
   ctx.fillStyle = g;
-  ctx.fillRect(0, GROUND - 8, GW, GH - GROUND + 8);
+  ctx.fillRect(-ox, GROUND - 8, viewW, GH - GROUND + 8);
 }
 
 // ---- Fighter shadow ----
@@ -196,7 +226,7 @@ export function drawOverlays(p1, p2, renderTime) {
     if (!ov.states.includes(attacker.state)) continue;
     const img = ov._img;
     if (!img || !img.complete || img.naturalWidth === 0) continue;
-    const tx = Math.round(target.x - _cameraX);
+    const tx = Math.round(target.x - _cameraX + _overscanX);
     const stateOffset = ov.stateOffsets?.[attacker.state] ?? (ov.offsetY || 0);
     const ty = Math.round(target.y + stateOffset);
     const frame = ov.cols
@@ -259,7 +289,33 @@ export function drawFighterPlaceholder(fighter, renderTime) {
       const col     = f % cols;
       const row     = Math.floor(f / cols);
       ctx.imageSmoothingEnabled = false;
-      ctx.drawImage(img, col * fw + cropX, row * fh + cropY, cropW, cropH, -destW / 2, -destH + offsetY, destW, destH);
+      const dx = -destW / 2;
+      const dy = -destH + offsetY;
+      const fadeR = fighter.def.animSheetFadeR;
+      if (fadeR) {
+        // Draw to offscreen canvas so fade doesn't erase the background
+        if (!_fadeOC || _fadeOC.width < destW || _fadeOC.height < destH) {
+          _fadeOC = document.createElement('canvas');
+          _fadeOC.width  = Math.ceil(destW);
+          _fadeOC.height = Math.ceil(destH);
+        }
+        const oc = _fadeOC;
+        const oCtx = oc.getContext('2d');
+        oCtx.clearRect(0, 0, oc.width, oc.height);
+        oCtx.imageSmoothingEnabled = false;
+        oCtx.drawImage(img, col * fw + cropX, row * fh + cropY, cropW, cropH, 0, 0, destW, destH);
+        // Erase right edge with gradient
+        oCtx.globalCompositeOperation = 'destination-out';
+        const lg = oCtx.createLinearGradient(destW - fadeR, 0, destW, 0);
+        lg.addColorStop(0, 'rgba(0,0,0,0)');
+        lg.addColorStop(1, 'rgba(0,0,0,1)');
+        oCtx.fillStyle = lg;
+        oCtx.fillRect(destW - fadeR, 0, fadeR, destH);
+        oCtx.globalCompositeOperation = 'source-over';
+        ctx.drawImage(oc, 0, 0, destW, destH, dx, dy, destW, destH);
+      } else {
+        ctx.drawImage(img, col * fw + cropX, row * fh + cropY, cropW, cropH, dx, dy, destW, destH);
+      }
       ctx.restore();
       drawComboCounter(fighter, px, py, renderTime);
       return;
