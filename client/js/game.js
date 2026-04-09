@@ -2,12 +2,12 @@
 
 import { Fighter, CHARACTERS } from './fighter.js';
 import * as input    from './input.js';
-import { ctx, drawBG, setActiveBG, drawShadow, drawFighterPlaceholder, drawProjectiles, drawOverlays, loadSpriteSheet, applyScreenShake } from './renderer.js';
+import { canvas, ctx, drawBG, setActiveBG, drawShadow, drawFighterPlaceholder, drawProjectiles, drawOverlays, loadSpriteSheet, applyScreenShake, updateCamera, getCameraX, getStageWidth } from './renderer.js';
 import { pushApart, resolveHits, clampToWalls } from './collision.js';
 import * as audio    from './audio.js';
 import { spawnHitSpark, spawnBlockSpark, updateParticles, drawParticles, clearParticles } from './particles.js';
-import { drawHUD, drawMessage, drawKOScreen, drawTitle, drawCharSelect, drawMapSelect, drawPauseOverlay, drawControlsOverlay, drawHighScore, drawViewScores, drawLoading, getTitleMenuIndex, menuUp, menuDown } from './ui.js';
-import { cpuSnapshot } from './cpu.js';
+import { drawHUD, drawMessage, drawKOScreen, drawTitle, drawCharSelect, drawMapSelect, drawPauseOverlay, drawControlsOverlay, drawHighScore, drawViewScores, drawLoading, drawSplash, getTitleMenuIndex, menuUp, menuDown } from './ui.js';
+import { cpuSnapshot, getCpuDifficulty, setCpuDifficulty, resetCpuState } from './cpu.js';
 
 // ---- Constants ----
 const TICK_MS = 1000 / 60; // ~16.667ms per tick
@@ -62,11 +62,11 @@ let charSelectDelay = 0; // ticks to wait after both confirmed before map screen
 
 // ---- Map definitions ----
 const MAP_DEFS = [
-  { id: 'sf',     name: 'SAN FRANCISCO', src: 'assets/maps/SF_Map.png',      city: { fx: 0.104, fy: 0.425 }, thumbName: 'GOLDEN GATE' },
-  { id: 'venice', name: 'VENICE',        src: 'assets/maps/Venice_map.png',  city: { fx: 0.160, fy: 0.624 }, cityName: 'LOS ANGELES', labelBelow: true },
-  { id: 'bk',     name: 'BROOKLYN',      src: 'assets/maps/BK_Map.png',      city: { fx: 0.840, fy: 0.394 }, thumbName: 'BROOKLYN BRIDGE' },
-  { id: 'philly', name: 'PHILLY',        src: 'assets/maps/philly_map.png',  city: { fx: 0.815, fy: 0.415 }, thumbName: 'INDEPENDENCE HALL' },
-  { id: 'dc',     name: 'WASHINGTON DC', src: 'assets/maps/DC_map.png',      city: { fx: 0.802, fy: 0.477 }, labelBelow: true, thumbName: 'WHITE HOUSE' },
+  { id: 'sf',     name: 'SAN FRANCISCO', src: 'assets/maps/sf_wides.png',      city: { fx: 0.104, fy: 0.425 }, thumbName: 'GOLDEN GATE' },
+  { id: 'venice', name: 'VENICE',        src: 'assets/maps/venice_wides.png',  city: { fx: 0.160, fy: 0.624 }, cityName: 'LOS ANGELES', labelBelow: true },
+  { id: 'bk',     name: 'BROOKLYN',      src: 'assets/maps/bk_wides.png',      city: { fx: 0.840, fy: 0.394 }, thumbName: 'BROOKLYN BRIDGE' },
+  { id: 'philly', name: 'PHILLY',        src: 'assets/maps/philly_wide.png',   city: { fx: 0.815, fy: 0.415 }, thumbName: 'INDEPENDENCE HALL' },
+  { id: 'dc',     name: 'WASHINGTON DC', src: 'assets/maps/DC_wides.png',      city: { fx: 0.802, fy: 0.477 }, labelBelow: true, thumbName: 'WHITE HOUSE' },
 ];
 MAP_DEFS.forEach(m => { const img = new Image(); img.src = m.src; m._img = img; });
 
@@ -115,6 +115,17 @@ const HS_CHARS = ' ABCDEFGHIJKLMNOPQRSTUVWXYZ';
 function nextHsChar(c) { const i = HS_CHARS.indexOf(c); return HS_CHARS[(i + 1) % HS_CHARS.length]; }
 function prevHsChar(c) { const i = HS_CHARS.indexOf(c); return HS_CHARS[(i - 1 + HS_CHARS.length) % HS_CHARS.length]; }
 
+// ---- Splash intro state ----
+const SPLASH_PATHS = [
+  'assets/screens/splash_intro/strip_1.png',
+  'assets/screens/splash_intro/Strip_2.png',
+  'assets/screens/splash_intro/Strip_3.png',
+];
+const splashImgs = SPLASH_PATHS.map(src => { const img = new Image(); img.src = src; return img; });
+let splashIdx = 0;
+let splashStartTime = 0; // rAF timestamp when current strip started
+let splashManual = false; // true once user uses arrow keys — disables auto-advance
+
 // ---- Announcer state ----
 let finishHimFired = false; // reset each round; fires once when a fighter hits < 20% hp
 
@@ -142,6 +153,8 @@ let hsScrollOffset = 0;
 
 // ---- UI overlay state ----
 let paused       = false;
+let pauseMenuIndex = 0;
+let practiceMode = false;
 let showControls = false;
 let showDebug    = true;
 
@@ -164,7 +177,7 @@ loadSpriteSheet(CHARACTERS['musk']);
 // new Image() calls in renderer.js and ui.js become instant cache hits.
 // TOTAL_ASSET_BYTES is hardcoded from filesystem (run: stat -f '%z' assets/... | awk '{sum+=$1}END{print sum}')
 // Update this when adding/replacing assets.
-const TOTAL_ASSET_BYTES = 163762904;
+const TOTAL_ASSET_BYTES = 181291551;
 const loadProgress = { loaded: 0, total: TOTAL_ASSET_BYTES, files: [], ready: false };
 let assetsReady = false;
 
@@ -176,8 +189,11 @@ let assetsReady = false;
     'assets/characters/musk/tesla_sprite.png',
     'assets/characters/zuck/influencer_mob.png',
     // Screen images (loaded by ui.js)
+    'assets/screens/Rage_Logo.png',
     'assets/screens/vs.png',
     'assets/screens/map.png',
+    // Splash intro strips
+    ...SPLASH_PATHS,
     // Char select mugs + portraits (loaded by ui.js CHAR_DEFS)
     'assets/characters/sam_altman/altman_mug.png',      'assets/characters/sam_altman/altman_fullbody.png',
     'assets/characters/zuck/zuck_mug.png',              'assets/characters/zuck/zuck_fullbody.png',
@@ -279,7 +295,7 @@ function tick(inputOverrides = null) {
   // are captured into the fighter's input buffer and not lost to clearFrame().
   const i1 = input.snapshot(0);
   const i2 = gameMode === '1p'
-    ? cpuSnapshot(p2.x, p1.x)
+    ? (practiceMode ? { left:false, right:false, up:false, down:false, punch:false, heavyPunch:false, kick:false, heavyKick:false, block:false } : cpuSnapshot(p2, p1))
     : input.snapshot(1);
 
   // Track last input for debug display (render-side only) — always, not just during fight
@@ -456,8 +472,8 @@ function updateProjectiles() {
         proj._animFrame = ((proj._animFrame || 0) + 1) % proj.cols;
       }
     }
-    const exitX = 640 + (proj.w || 0);
-    if (Math.abs(proj.x - proj.startX) >= proj.maxRange || proj.x < proj.startX || proj.x > exitX) {
+    const exitX = getStageWidth() + (proj.w || 0);
+    if (Math.abs(proj.x - proj.startX) >= proj.maxRange || proj.x < 0 || proj.x > exitX) {
       proj.active = false;
       continue;
     }
@@ -480,6 +496,7 @@ function updateProjectiles() {
 function startRound() {
   p1.reset();
   p2.reset();
+  resetCpuState();
   roundTimer = 99;
   roundTicks = 0;
   clearParticles();
@@ -650,7 +667,7 @@ function drawZuckMob(renderTime) {
   const frame = Math.min(Math.floor(elapsed / (ZUCK_MOB_DURATION / ZUCK_MOB_COLS)), ZUCK_MOB_COLS - 1);
 
   const target = zuckMobOverlay.target;
-  const dx = Math.round(target.x - ZUCK_MOB_W / 2);
+  const dx = Math.round(target.x - getCameraX() - ZUCK_MOB_W / 2);
   const dy = Math.round(GROUND - ZUCK_MOB_H);
 
   // Draw frame (with left crop) into an offscreen canvas, then fade edges
@@ -700,6 +717,10 @@ function drawZuckMob(renderTime) {
 // ---- Render ----
 // renderTime is the raw rAF timestamp (wall ms) used for visual-only animations.
 function render(renderTime) {
+  // Smooth upscaling for screens with detailed artwork; pixelated for gameplay
+  const smooth = gameState === 'loading' || gameState === 'splash';
+  canvas.style.imageRendering = smooth ? 'auto' : 'pixelated';
+
   // Decay screen shake
   screenShake *= 0.8;
   if (screenShake < 0.4) screenShake = 0;
@@ -709,10 +730,43 @@ function render(renderTime) {
     drawLoading(ctx, loadProgress, renderTime);
     if (assetsReady && input.isAnyKey()) {
       audio.initAudio();
-      audio.playMusic('assets/audio/music/intro.mp3');
-      gameState = 'title';
+      splashIdx = 0;
+      splashStartTime = renderTime;
+      splashManual = false;
+      gameState = 'splash';
+      audio.playMusic('assets/audio/music/Rage_main_intro.mp4');
       input.clearFrame();
     }
+    return;
+  }
+
+  // Splash intro — show 3 comic strips in sequence, navigate with arrows
+  if (gameState === 'splash') {
+    const elapsed = renderTime - splashStartTime;
+    let advanced = false;
+    // Once user navigates with arrows, disable auto-advance entirely
+    if (input.isMenuRight() || input.isMenuLeft()) splashManual = true;
+    const holdMs = splashIdx === 0 ? 25000 : 15000;
+    const timerFired = !splashManual && elapsed >= holdMs;
+    if (input.isMenuRight() || timerFired) {
+      if (splashIdx < splashImgs.length - 1) {
+        splashIdx++;
+        splashStartTime = renderTime;
+        advanced = true;
+      } else {
+        // Past last strip — go to title
+        audio.playMusic('assets/audio/music/Rage_main_intro.mp4');
+        gameState = 'title';
+        input.clearFrame();
+      }
+    }
+    if (!advanced && input.isMenuLeft() && splashIdx > 0) {
+      splashIdx--;
+      splashStartTime = renderTime;
+    }
+    input.clearFrame();
+    const stripAge = renderTime - splashStartTime;
+    drawSplash(ctx, splashImgs[Math.min(splashIdx, splashImgs.length - 1)], splashIdx, splashImgs.length, stripAge);
     return;
   }
 
@@ -728,17 +782,25 @@ function render(renderTime) {
 
   // Title screen
   if (gameState === 'title') {
+    if (input.isEscapeKey()) {
+      splashIdx = 0;
+      splashStartTime = renderTime;
+      splashManual = true; // returning from menu — no auto-advance
+      gameState = 'splash';
+      input.clearFrame();
+    }
     if (input.isMenuUp())   { menuUp();   audio.sfxScroll(); }
     if (input.isMenuDown()) { menuDown(); audio.sfxScroll(); }
     if (input.isMenuConfirm()) {
       const sel = getTitleMenuIndex();
-      if (sel === 1) {
-        // TOP SCORES selected
+      if (sel === 3) {
+        // TOP SCORES (SEE MORE virtual slot)
         gameState = 'viewScores';
         input.clearFrame();
-      } else {
-        // 1 PLAYER
-        gameMode    = '1p';
+      } else if (sel === 0 || sel === 1) {
+        // VERSUS MODE (0) or PRACTICE MODE (1)
+        gameMode     = '1p';
+        practiceMode = sel === 1;
         audio.sfxConfirmation();
         setTimeout(() => audio.sfxTestLuck(), 1000);
         p1SelIdx         = 0;
@@ -828,8 +890,9 @@ function render(renderTime) {
       setActiveBG(MAP_DEFS[mapSelIdx]._img);
       const d1 = CHARACTERS[CHAR_IDS[p1SelIdx]];
       const d2 = CHARACTERS[CHAR_IDS[p2SelIdx]];
-      p1 = new Fighter({ ...d1, startX: 140, facing:  1 }, 0);
-      p2 = new Fighter({ ...d2, startX: 340, facing: -1 }, 1);
+      const sw = getStageWidth();
+      p1 = new Fighter({ ...d1, startX: Math.round(sw / 2 - 100), facing:  1 }, 0);
+      p2 = new Fighter({ ...d2, startX: Math.round(sw / 2 + 100), facing: -1 }, 1);
       p1Wins  = 0;
       p2Wins  = 0;
       roundNum = 1;
@@ -867,8 +930,12 @@ function render(renderTime) {
     if (input.isMenuConfirm()) {
       if (onBoard) saveHighScore(hsInitials.join(''), p1Score);
       audio.sfxConfirmation();
-      audio.playMusic('assets/audio/music/intro.mp3');
-      gameState = 'title';
+      audio.playMusic('assets/audio/music/Rage_main_intro.mp4');
+      p1SelIdx    = 0;
+      p2SelIdx    = 1;
+      p1Confirmed = false;
+      p2Confirmed = false;
+      gameState   = 'charSelect';
       input.clearFrame();
     }
     // Smooth auto-scroll to center the player's entry row
@@ -894,7 +961,7 @@ function render(renderTime) {
     }
     if (input.isMenuConfirm()) {
       audio.initAudio();
-      audio.playMusic('assets/audio/music/intro.mp3');
+      audio.playMusic('assets/audio/music/Rage_main_intro.mp4');
       p1SelIdx    = 0;
       p2SelIdx    = 1;
       p1Confirmed = false;
@@ -902,7 +969,7 @@ function render(renderTime) {
       gameState   = 'charSelect';
     }
     if (input.isEscapeKey()) {
-      audio.playMusic('assets/audio/music/intro.mp3');
+      audio.playMusic('assets/audio/music/Rage_main_intro.mp4');
       gameState = 'title';
     }
   }
@@ -917,10 +984,18 @@ function render(renderTime) {
   p2GhostHP = p2GhostHP > p2.hp ? Math.max(p2.hp, p2GhostHP - 0.5) : p2.hp;
 
   // Draw frame
+  updateCamera(p1, p2);
+  const camX = getCameraX();
+
   ctx.save();
   applyScreenShake(screenShake);
 
+  // Background draws in screen space (parallax handled internally)
   drawBG(renderTime);
+
+  // World-space objects: translate by camera
+  ctx.save();
+  ctx.translate(-camX, 0);
   drawShadow(p1);
   drawShadow(p2);
   drawFighterPlaceholder(p1, renderTime);
@@ -928,6 +1003,9 @@ function render(renderTime) {
   drawOverlays(p1, p2, renderTime);
   drawProjectiles(projectiles);
   drawParticles(ctx);
+  ctx.restore(); // end world-space translate
+
+  // HUD in screen space (still inside shake block)
   drawHUD(ctx, { p1, p2, p1Wins, p2Wins, roundTimer, roundNum, renderTime, p1GhostHP, p2GhostHP, p1Score, gameMode });
   // Suppress text message while KO door-slide is running
   if (koSlideFrame === null) drawMessage(ctx, msgText);
@@ -948,15 +1026,28 @@ function render(renderTime) {
   }
 
   // Pause toggle (1P only, during fight)
-  if (gameMode === '1p' && gameState === 'fight' && input.isPauseKey()) {
+  if (gameMode === '1p' && gameState === 'fight' && (input.isPauseKey() || input.isEscapeKey())) {
     paused = !paused;
+    if (paused) pauseMenuIndex = 0;
   }
-  // Escape while paused → quit to title
-  if (paused && input.isEscapeKey()) {
-    paused = false;
-    gameState = 'title';
+  // Interactive pause menu
+  if (paused) {
+    const pauseItems = practiceMode ? ['RESUME', 'QUIT TO MENU'] : ['RESUME', 'DIFFICULTY', 'QUIT TO MENU'];
+    const maxIdx = pauseItems.length - 1;
+    if (input.isMenuUp())   pauseMenuIndex = Math.max(0, pauseMenuIndex - 1);
+    if (input.isMenuDown()) pauseMenuIndex = Math.min(maxIdx, pauseMenuIndex + 1);
+    // Difficulty adjustment (left/right on difficulty row, versus mode only)
+    if (!practiceMode && pauseMenuIndex === 1) {
+      if (input.isMenuLeft())  setCpuDifficulty(getCpuDifficulty() - 1);
+      if (input.isMenuRight()) setCpuDifficulty(getCpuDifficulty() + 1);
+    }
+    if (input.isMenuConfirm()) {
+      if (pauseMenuIndex === 0) paused = false; // Resume
+      if (pauseMenuIndex === maxIdx) { paused = false; setActiveBG(null); audio.playMusic('assets/audio/music/Rage_main_intro.mp4'); gameState = 'title'; } // Quit
+    }
+    if (input.isEscapeKey()) { paused = false; }
+    drawPauseOverlay(ctx, { pauseMenuIndex, difficulty: getCpuDifficulty(), practiceMode });
   }
-  if (paused) drawPauseOverlay(ctx);
 
   // Debug overlay toggle (I key)
   if (input.isDebugKey()) showDebug = !showDebug;
@@ -966,7 +1057,10 @@ function render(renderTime) {
   if (showControls) drawControlsOverlay(ctx, p1.def, p2.def);
 
   if (showDebug && (gameState === 'fight' || gameState === 'roundEnd')) {
+    ctx.save();
+    ctx.translate(-getCameraX(), 0);
     drawDebugHitboxes(p1, p2);
+    ctx.restore();
     drawDebugConsole(p1, p2);
   }
 }

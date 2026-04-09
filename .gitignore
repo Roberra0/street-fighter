@@ -12,5 +12,8 @@ specs/
 RyuCE.png
 SFAlpha3_Reference_Screenshots/
 
+# Archives
+**/archive/
+
 # OS
 .DS_Store

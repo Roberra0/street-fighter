@@ -1,7 +1,6 @@
 // collision.js — boxHit, pushApart, hitbox/hurtbox resolution
 
-const WALL_L = 24;
-const WALL_R = 640 - 24; // GW - 24
+import { getWallL, getWallR } from './renderer.js';
 
 export function boxHit(a, b) {
   return (
@@ -48,5 +47,5 @@ export function resolveHits(attacker, defender) {
 
 // Clamp a fighter's x position within the wall bounds.
 export function clampToWalls(fighter) {
-  fighter.x = Math.max(WALL_L, Math.min(WALL_R, fighter.x));
+  fighter.x = Math.max(getWallL(), Math.min(getWallR(), fighter.x));
 }

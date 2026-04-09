@@ -1,4 +1,5 @@
 // fighter.js — Fighter class + stepAnimation() + character registry
+import { getWallL, getWallR } from './renderer.js';
 const t = () => `+${performance.now().toFixed(1)}ms`;
 
 // ---- Altman idle frame log ----
@@ -47,8 +48,6 @@ export const CHARACTERS = {
 // ---- Physics constants (must match game.js / collision.js) ----
 const GRAVITY = 0.38;
 const GROUND  = 340;
-const WALL_L  = 24;
-const WALL_R  = 640 - 24; // GW - 24
 
 // ---- Fighter class ----
 export class Fighter {
@@ -340,7 +339,7 @@ export class Fighter {
       const spriteHalfW = this.def.animSheets
         ? ((this.def.animSheetCropW || 60) * (this.def.animSheetScale || 1) / (this.def.animSheetDivisor || 1)) / 2
         : (this.def.hurtboxW || 30) / 2;
-      this.x = Math.max(WALL_L + spriteHalfW, Math.min(WALL_R - spriteHalfW, this.x));
+      this.x = Math.max(getWallL() + spriteHalfW, Math.min(getWallR() - spriteHalfW, this.x));
       // Freeze animation on first landing impact
       if (this._koHoldFrames > 0) {
         this._koHoldFrames--;
@@ -547,7 +546,7 @@ export class Fighter {
       this.facing = opp.x > this.x ? 1 : -1;
     }
 
-    this.x = Math.max(WALL_L, Math.min(WALL_R, this.x));
+    this.x = Math.max(getWallL(), Math.min(getWallR(), this.x));
 
     this.stepAnimation();
     return events;

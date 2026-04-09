@@ -14,6 +14,10 @@ const FIGHT_SONGS = [
   'assets/audio/music/fight_song3.wav',
   'assets/audio/music/fight_song4.wav',
   'assets/audio/music/fight_song5.wav',
+  'assets/audio/music/intro.mp3',
+  'assets/audio/music/Rage_song.mp4',
+  'assets/audio/music/Rage_song2.mp4',
+  'assets/audio/music/Rage_song3.mp4',
 ];
 
 export function playMusic(src, volume = 0.4) {

@@ -23,16 +23,47 @@ window.addEventListener('resize', resize);
 
 // ---- Active background map ----
 let _activeBG = null;
-export function setActiveBG(img) { _activeBG = img; }
+export function setActiveBG(img) { _activeBG = img; _stageWidth = null; }
 
-// ---- Background ----
+// ---- Camera & stage bounds ----
+const WALL_PAD = 24;
+const BG_PARALLAX = 0.8; // BG scrolls slower than fighters for depth
+let _stageWidth = null;   // computed from active map aspect ratio
+let _cameraX = 0;         // world-space X of viewport left edge
+
+export function getStageWidth() {
+  if (_stageWidth !== null) return _stageWidth;
+  if (_activeBG && _activeBG.complete && _activeBG.naturalWidth > 0) {
+    _stageWidth = Math.round(_activeBG.naturalWidth * (GH / _activeBG.naturalHeight));
+  } else {
+    _stageWidth = GW; // fallback to viewport width
+  }
+  return _stageWidth;
+}
+
+export function getWallL() { return WALL_PAD; }
+export function getWallR() { return getStageWidth() - WALL_PAD; }
+export function getCameraX() { return _cameraX; }
+
+export function updateCamera(p1, p2) {
+  const mid = (p1.x + p2.x) / 2;
+  const maxCam = getStageWidth() - GW;
+  _cameraX = Math.max(0, Math.min(maxCam, mid - GW / 2));
+}
+
+// ---- Background (parallax) ----
 
 export function drawBG() {
   if (_activeBG && _activeBG.complete && _activeBG.naturalWidth > 0) {
     ctx.imageSmoothingEnabled = true;
-    ctx.drawImage(_activeBG, 0, 0, GW, GH);
+    const sw = getStageWidth();
+    const maxCam = sw - GW;
+    // Parallax: BG scrolls at a fraction of camera movement
+    const bgOffset = maxCam > 0 ? (_cameraX / maxCam) * (_activeBG.naturalWidth - _activeBG.naturalWidth * (GW / sw)) : 0;
+    const srcX = Math.round(bgOffset);
+    const srcW = Math.round(_activeBG.naturalWidth * (GW / sw));
+    ctx.drawImage(_activeBG, srcX, 0, srcW, _activeBG.naturalHeight, 0, 0, GW, GH);
   } else {
-    // fallback dark background until image loads
     ctx.fillStyle = '#0e0620';
     ctx.fillRect(0, 0, GW, GH);
   }
@@ -165,7 +196,7 @@ export function drawOverlays(p1, p2, renderTime) {
     if (!ov.states.includes(attacker.state)) continue;
     const img = ov._img;
     if (!img || !img.complete || img.naturalWidth === 0) continue;
-    const tx = Math.round(target.x);
+    const tx = Math.round(target.x - _cameraX);
     const stateOffset = ov.stateOffsets?.[attacker.state] ?? (ov.offsetY || 0);
     const ty = Math.round(target.y + stateOffset);
     const frame = ov.cols

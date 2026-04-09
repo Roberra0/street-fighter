@@ -8,38 +8,66 @@ export const BUILD = '2026-03-24 22:29 PST v8';
 // titleBlink is render-side state — lives in ui.js module scope
 let titleBlink = 0;
 
+// Preload the Rage logo for the loading screen
+const rageLogo = new Image();
+rageLogo.src = 'assets/screens/Rage_Logo.png';
+
 // Title-screen menu state
-const MENU_ITEMS = ['1 PLAYER', 'TOP SCORES'];
+const MENU_ITEMS = ['VERSUS MODE', 'PRACTICE MODE', 'STORY MODE'];
 let menuIndex = 0;
 
 // Returns the currently highlighted menu option index (0 = 1P, 1 = TOP SCORES).
 export function getTitleMenuIndex() { return menuIndex; }
 
-export function menuUp()   { menuIndex = Math.max(0, menuIndex - 1); }
-export function menuDown() { menuIndex = Math.min(MENU_ITEMS.length - 1, menuIndex + 1); }
+const DISABLED_ITEMS = new Set([2]); // STORY MODE index
+// Extra virtual slot after MENU_ITEMS for "SEE MORE" scores
+const MENU_TOTAL = MENU_ITEMS.length + 1; // last slot = SEE MORE
+export function menuUp() {
+  let next = menuIndex - 1;
+  while (next >= 0 && DISABLED_ITEMS.has(next)) next--;
+  if (next >= 0) menuIndex = next;
+}
+export function menuDown() {
+  let next = menuIndex + 1;
+  while (next < MENU_TOTAL && DISABLED_ITEMS.has(next)) next++;
+  if (next < MENU_TOTAL) menuIndex = next;
+}
 
 export function drawLoading(ctx, progress, renderTime) {
   ctx.fillStyle = '#000';
   ctx.fillRect(0, 0, GW, GH);
 
-  // Title
+  // ---- Rage Logo at top ----
+  if (rageLogo.complete && rageLogo.naturalWidth > 0) {
+    const maxLogoW = GW * 0.60;
+    const maxLogoH = GH * 0.28;
+    const scale = Math.min(maxLogoW / rageLogo.naturalWidth, maxLogoH / rageLogo.naturalHeight);
+    const dw = rageLogo.naturalWidth * scale;
+    const dh = rageLogo.naturalHeight * scale;
+    const dx = (GW - dw) / 2;
+    const dy = 30;
+    ctx.imageSmoothingEnabled = true;
+    ctx.drawImage(rageLogo, dx, dy, dw, dh);
+  }
+
   ctx.textAlign = 'center';
-  ctx.fillStyle = '#fff';
-  ctx.font = 'bold 18px monospace';
-  ctx.fillText('STREET BRAWL', GW / 2, 28);
 
   if (progress.ready) {
+    // ---- Welcome text below logo ----
+    ctx.font = 'bold 14px monospace';
+    ctx.fillStyle = '#ffcc44';
+    ctx.fillText('Welcome, let me get you up to speed', GW / 2, GH / 2 + 30);
     const blink = Math.floor(renderTime / 500) % 2 === 0;
-    ctx.font = 'bold 11px monospace';
-    ctx.fillStyle = blink ? '#ffcc44' : '#886622';
-    ctx.fillText('PRESS ANY KEY TO START', GW / 2, GH / 2);
+    ctx.font = '9px monospace';
+    ctx.fillStyle = blink ? '#886622' : '#553300';
+    ctx.fillText('press any key to continue', GW / 2, GH / 2 + 50);
     return;
   }
 
-  // Progress bar
+  // ---- Progress bar at bottom ----
   const pct  = progress.total > 0 ? Math.min(progress.loaded / progress.total, 1) : 0;
   const barW = 320, barH = 10;
-  const barX = (GW - barW) / 2, barY = 50;
+  const barX = (GW - barW) / 2, barY = GH - 80;
   ctx.fillStyle = '#222';
   ctx.fillRect(barX, barY, barW, barH);
   ctx.fillStyle = '#ffcc44';
@@ -52,49 +80,63 @@ export function drawLoading(ctx, progress, renderTime) {
   const mb = n => (n / 1048576).toFixed(1) + ' MB';
   ctx.font = 'bold 9px monospace';
   ctx.fillStyle = '#fff';
-  ctx.textAlign = 'center';
-  ctx.fillText(Math.round(pct * 100) + '%', GW / 2, barY + barH + 12);
+  ctx.fillText(Math.round(pct * 100) + '%', GW / 2, barY + barH + 14);
   ctx.font = '8px monospace';
   ctx.fillStyle = '#888';
-  ctx.fillText(mb(progress.loaded) + ' / ' + mb(progress.total), GW / 2, barY + barH + 22);
+  ctx.fillText(mb(progress.loaded) + ' / ' + mb(progress.total), GW / 2, barY + barH + 26);
+}
 
-  // Category buckets
-  const BUCKETS = [
-    { label: 'Maps',              match: p => p.startsWith('assets/maps/') },
-    { label: 'Character Sprites', match: p => p.startsWith('assets/characters/') },
-    { label: 'Screens',          match: p => p.startsWith('assets/screens/') },
-    { label: 'Other',            match: () => true },
-  ];
+export function drawSplash(ctx, img, idx, total, timer) {
+  ctx.fillStyle = '#000';
+  ctx.fillRect(0, 0, GW, GH);
 
-  const buckets = BUCKETS.map(b => {
-    const files = progress.files.filter(f => b.match(f.path));
-    const total = files.length;
-    const done  = files.filter(f => f.done).length;
-    const size  = files.reduce((s, f) => s + f.size, 0);
-    return { label: b.label, total, done, size, complete: total > 0 && done === total };
-  }).filter(b => b.total > 0);
+  if (img && img.complete && img.naturalWidth > 0) {
+    // Draw image centered, fitting the canvas while preserving aspect ratio
+    const scale = Math.min(GW / img.naturalWidth, GH / img.naturalHeight);
+    const dw = img.naturalWidth * scale;
+    const dh = img.naturalHeight * scale;
+    const dx = (GW - dw) / 2;
+    const dy = (GH - dh) / 2;
 
-  const tableX = GW / 2 - 110, tableY = barY + barH + 38;
-  const rowH = 18;
+    // Fade in over 500ms
+    const fadeIn = Math.min(timer / 500, 1);
+    ctx.globalAlpha = fadeIn;
+    ctx.imageSmoothingEnabled = true;
+    ctx.drawImage(img, dx, dy, dw, dh);
+    ctx.globalAlpha = 1;
+  }
 
-  buckets.forEach((b, i) => {
-    const y = tableY + i * rowH;
-    const sz = b.size >= 1048576 ? (b.size / 1048576).toFixed(1) + ' MB'
-             : b.size >= 1024    ? Math.round(b.size / 1024) + ' KB' : '';
+  // Navigation arrows + indicator dots at bottom
+  ctx.textAlign = 'center';
+  const navY = GH - 14;
 
-    ctx.font = 'bold 10px monospace';
-    ctx.fillStyle = b.complete ? '#aaffaa' : '#ffcc44';
-    ctx.textAlign = 'left';
-    ctx.fillText(b.complete ? '✓' : '↓', tableX, y);
+  // Left arrow (hide on first strip)
+  if (idx > 0) {
+    ctx.font = 'bold 14px monospace';
+    ctx.fillStyle = '#888';
+    ctx.fillText('◀', GW / 2 - 40, navY);
+  }
 
-    ctx.fillStyle = b.complete ? '#aaa' : '#fff';
-    ctx.fillText(b.label, tableX + 16, y);
+  // Right arrow (hide on last strip, pulse on first)
+  if (idx < total - 1) {
+    ctx.font = 'bold 14px monospace';
+    if (idx === 0) {
+      const pulse = 0.5 + Math.sin(timer / 300) * 0.5;
+      ctx.fillStyle = `rgba(255,204,68,${0.4 + pulse * 0.6})`;
+    } else {
+      ctx.fillStyle = '#888';
+    }
+    ctx.fillText('▶', GW / 2 + 40, navY);
+  }
 
-    ctx.font = '9px monospace';
-    ctx.fillStyle = '#555';
-    ctx.textAlign = 'right';
-    ctx.fillText(sz, tableX + 220, y);
-  });
+  // Strip indicator dots
+  for (let i = 0; i < total; i++) {
+    const dotX = GW / 2 + (i - (total - 1) / 2) * 12;
+    ctx.fillStyle = i === idx ? '#fc5' : '#333';
+    ctx.beginPath();
+    ctx.arc(dotX, navY - 4, 3, 0, Math.PI * 2);
+    ctx.fill();
+  }
 }
 
 // drawHUD reads all its data from the sim state passed in.
@@ -413,41 +455,36 @@ export function drawTitle(ctx, drawBG, renderTime) {
   ctx.font = 'bold 8px monospace';
   ctx.fillStyle = '#666644';
   ctx.textAlign = 'right';
-  ctx.fillText('ENTER  to confirm', GW - 8, 14);
+  ctx.fillText('ENTER  to confirm  ·  ESC  back', GW - 8, 14);
 
-  // ── Title ─────────────────────────────────────────────────────────────────────
-  ctx.fillStyle = '#fc5';
-  ctx.font = 'bold 42px monospace';
-  ctx.textAlign = 'center';
-  ctx.fillText('STREET BRAWL', GW / 2, 68);
-
-  // ── Mugshot roster strip ──────────────────────────────────────────────────────
-  const realChars = CHAR_DEFS.filter(c => c.id !== 'random');
-  const mugSz = 28, mugGap = 4;
-  const mugRowW = realChars.length * mugSz + (realChars.length - 1) * mugGap;
-  const mugX0 = Math.round((GW - mugRowW) / 2);
-  const mugY0 = 74;
-  realChars.forEach((ch, i) => {
-    const mx = mugX0 + i * (mugSz + mugGap);
-    ctx.fillStyle = ch.color;
-    ctx.fillRect(mx, mugY0, mugSz, mugSz);
-    if (ch._mug && ch._mug.complete && ch._mug.naturalWidth > 0) {
-      ctx.save();
-      ctx.beginPath(); ctx.rect(mx, mugY0, mugSz, mugSz); ctx.clip();
-      drawImageCover(ctx, ch._mug, mx, mugY0, mugSz, mugSz);
-      ctx.restore();
-    } else {
-      ctx.fillStyle = ch.accent;
-      ctx.fillRect(mx + 5, mugY0 + 4, mugSz - 10, mugSz - 12);
-    }
-  });
+  // ── Rage Logo ─────────────────────────────────────────────────────────────────
+  if (rageLogo.complete && rageLogo.naturalWidth > 0) {
+    const maxLogoW = GW * 0.55;
+    const maxLogoH = GH * 0.25;
+    const scale = Math.min(maxLogoW / rageLogo.naturalWidth, maxLogoH / rageLogo.naturalHeight);
+    const dw = rageLogo.naturalWidth * scale;
+    const dh = rageLogo.naturalHeight * scale;
+    const dx = (GW - dw) / 2;
+    const dy = 24;
+    ctx.imageSmoothingEnabled = true;
+    ctx.drawImage(rageLogo, dx, dy, dw, dh);
+  }
 
   // ── Menu items ────────────────────────────────────────────────────────────────
+  ctx.textAlign = 'center';
   titleBlink += 0.04;
   MENU_ITEMS.forEach((label, i) => {
-    const y = 125 + i * 26;
+    const y = 145 + i * 26;
     const selected = i === menuIndex;
-    if (selected) {
+    const disabled = DISABLED_ITEMS.has(i);
+    if (disabled) {
+      ctx.font = '14px monospace';
+      ctx.fillStyle = '#444';
+      ctx.fillText(label, GW / 2, y);
+      ctx.font = 'bold 7px monospace';
+      ctx.fillStyle = '#553300';
+      ctx.fillText('(COMING SOON)', GW / 2, y + 11);
+    } else if (selected) {
       ctx.fillStyle = '#fc5';
       ctx.font = 'bold 16px monospace';
       ctx.globalAlpha = 0.5 + Math.sin(titleBlink * 3) * 0.5;
@@ -465,27 +502,27 @@ export function drawTitle(ctx, drawBG, renderTime) {
   const _uiSeed = [{name:'JNY',score:420},{name:'MKE',score:380},{name:'SPR',score:350},{name:'RND',score:310}];
   try { const r = localStorage.getItem('SFHighScores'); allScores = r ? JSON.parse(r) : _uiSeed; } catch { allScores = _uiSeed; }
   const top3 = allScores.slice(0, 3);
-  const hasMore = allScores.length > 3;
-  const scoresHighlighted = menuIndex === 1; // TOP SCORES menu item selected
 
-  const panelTop = 184;
-  ctx.fillStyle = '#221800';
+  const scoresHighlighted = menuIndex === MENU_ITEMS.length; // SEE MORE virtual slot
+
+  const panelTop = 210;
+  ctx.fillStyle = scoresHighlighted ? '#221800' : '#111';
   ctx.fillRect(GW / 2 - 120, panelTop, 240, 1);
 
   ctx.font = 'bold 7px monospace';
-  ctx.fillStyle = '#886622';
+  ctx.fillStyle = scoresHighlighted ? '#ffcc44' : '#444';
   ctx.textAlign = 'center';
   ctx.fillText('TOP  SCORES', GW / 2, panelTop + 11);
 
   if (top3.length === 0) {
-    ctx.fillStyle = '#3a2a10';
+    ctx.fillStyle = scoresHighlighted ? '#3a2a10' : '#333';
     ctx.font = '7px monospace';
     ctx.fillText('— NO SCORES YET —', GW / 2, panelTop + 30);
   } else {
     top3.forEach((entry, i) => {
       const y = panelTop + 24 + i * 16;
       ctx.font = 'bold 9px monospace';
-      ctx.fillStyle = '#886622';
+      ctx.fillStyle = scoresHighlighted ? '#bbaa44' : '#555';
       ctx.fillText(
         String(i + 1) + '.  ' + entry.name + '  ' + String(entry.score).padStart(6, '0'),
         GW / 2, y
@@ -493,27 +530,44 @@ export function drawTitle(ctx, drawBG, renderTime) {
     });
   }
 
-  // "SEE MORE" — only shown when there are >3 scores; flashes when highlighted
-  if (hasMore) {
-    const seeMoreY = panelTop + 24 + top3.length * 16 + 8;
-    const seeBlink = scoresHighlighted && Math.floor(renderTime / 300) % 2 === 0;
-    ctx.font = 'bold 8px monospace';
-    ctx.fillStyle = scoresHighlighted ? (seeBlink ? '#ffcc44' : '#665533') : '#3a2a10';
-    ctx.fillText('SEE MORE  ▼', GW / 2, seeMoreY);
-  }
+  // "SEE MORE" — flashes when scores panel is highlighted
+  const seeMoreY = panelTop + 24 + top3.length * 16 + 8;
+  const seeBlink = scoresHighlighted && Math.floor(renderTime / 300) % 2 === 0;
+  ctx.font = 'bold 8px monospace';
+  ctx.fillStyle = scoresHighlighted ? (seeBlink ? '#ffcc44' : '#665533') : '#333';
+  ctx.fillText(scoresHighlighted ? '> SEE MORE <' : 'SEE MORE  ▼', GW / 2, seeMoreY);
 }
 
-export function drawPauseOverlay(ctx) {
-  ctx.fillStyle = '#00000088';
+export function drawPauseOverlay(ctx, opts = {}) {
+  const { pauseMenuIndex = 0, difficulty = 1, practiceMode = false } = opts;
+
+  ctx.fillStyle = '#000000cc';
   ctx.fillRect(0, 0, GW, GH);
+
+  // Title
   ctx.fillStyle = '#fc5';
   ctx.font = 'bold 28px monospace';
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  ctx.fillText('PAUSED', GW / 2, GH / 2 - 10);
-  ctx.fillStyle = '#888';
-  ctx.font = '10px monospace';
-  ctx.fillText('P  to resume        ESC  to quit to menu', GW / 2, GH / 2 + 16);
+  ctx.fillText('PAUSED', GW / 2, GH / 2 - 55);
+
+  // Build menu items
+  const items = ['RESUME'];
+  if (!practiceMode) items.push('DIFFICULTY  \u25C0 ' + difficulty + ' \u25B6');
+  items.push('QUIT TO MENU');
+
+  items.forEach((label, i) => {
+    const y = GH / 2 - 12 + i * 26;
+    const selected = i === pauseMenuIndex;
+    ctx.font = selected ? 'bold 14px monospace' : '12px monospace';
+    ctx.fillStyle = selected ? '#fc5' : '#888';
+    ctx.fillText(selected ? '> ' + label + ' <' : label, GW / 2, y);
+  });
+
+  // Hint
+  ctx.fillStyle = '#555';
+  ctx.font = '9px monospace';
+  ctx.fillText('ARROWS to navigate  \u00B7  ENTER to select', GW / 2, GH / 2 + 65);
   ctx.textBaseline = 'alphabetic';
 }
 
