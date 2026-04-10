@@ -229,7 +229,7 @@ let assetsReady = false;
   // Load each image and wait for onload. Track bytes and decode progress.
   function loadImage(path) {
     return new Promise((resolve) => {
-      const entry = { name: path.split('/').pop(), path, size: 0, done: false };
+      const entry = { name: path.split('/').pop(), path, size: 0, done: false, startTime: performance.now() };
       loadProgress.files.push(entry);
 
       const img = new Image();
@@ -241,13 +241,17 @@ let assetsReady = false;
           entry.size = img.naturalWidth * img.naturalHeight * 4;
         }
         entry.done = true;
+        entry.loadTime = performance.now() - entry.startTime;
         loadProgress.loaded += entry.size;
+        console.log(`[preload] ${entry.name} loaded in ${entry.loadTime.toFixed(0)}ms (${(entry.size/1048576).toFixed(1)}MB)`);
         resolve();
       };
 
       img.onerror = () => {
         // Missing asset — renderer.js will handle gracefully
         entry.done = true;
+        entry.loadTime = performance.now() - entry.startTime;
+        console.warn(`[preload] ${entry.name} failed after ${entry.loadTime.toFixed(0)}ms`);
         resolve();
       };
 
@@ -257,10 +261,14 @@ let assetsReady = false;
   }
 
   // Load images in parallel
+  const preloadStart = performance.now();
   await Promise.all(ALL_IMAGE_PATHS.map(loadImage));
+  const preloadEnd = performance.now();
+  console.log(`[preload] All images loaded in ${(preloadEnd - preloadStart).toFixed(0)}ms`);
   loadProgress.files.sort((a, b) => b.size - a.size);
   loadProgress.ready = true;
   assetsReady = true;
+  console.log(`[preload] assetsReady = true at ${performance.now().toFixed(0)}ms`);
 })();
 
 let p1 = new Fighter(CHARACTERS['altman'], 0);
