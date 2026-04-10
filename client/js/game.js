@@ -172,9 +172,9 @@ loadSpriteSheet(CHARACTERS['jensen']);
 loadSpriteSheet(CHARACTERS['young_bezos']);
 loadSpriteSheet(CHARACTERS['musk']);
 
-// ---- Asset loading gate (fetch-based with progress tracking) ----
-// Fetching via fetch() populates the browser HTTP cache, so subsequent
-// new Image() calls in renderer.js and ui.js become instant cache hits.
+// ---- Asset loading gate (image decode preload with progress tracking) ----
+// Preloads images via Image objects and waits for actual decode/onload.
+// This ensures images are ready to render instantly when needed.
 // TOTAL_ASSET_BYTES is hardcoded from filesystem (run: stat -f '%z' assets/... | awk '{sum+=$1}END{print sum}')
 // Update this when adding/replacing assets.
 const TOTAL_ASSET_BYTES = 181291551;
@@ -219,26 +219,38 @@ let assetsReady = false;
     }),
   ];
 
-  // Fire all fetches in parallel; stream bodies and count bytes against fixed total
-  async function fetchAndStream(path) {
-    try {
-      const res = await fetch(path);
-      const size = parseInt(res.headers.get('content-length') || '0', 10);
-      const entry = { name: path.split('/').pop(), path, size, done: false };
+  // Load each image and wait for onload. Track bytes and decode progress.
+  function loadImage(path) {
+    return new Promise((resolve) => {
+      const entry = { name: path.split('/').pop(), path, size: 0, done: false };
       loadProgress.files.push(entry);
-      const reader = res.body.getReader();
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        loadProgress.loaded += value.length;
-      }
-      entry.done = true;
-    } catch {
-      // Missing asset — renderer.js will throw a clear error when it tries to draw it
-    }
+
+      const img = new Image();
+      img.crossOrigin = 'anonymous';
+
+      img.onload = () => {
+        // Approximate size from canvas data (width × height × 4 bytes per pixel)
+        if (img.complete && img.naturalWidth > 0) {
+          entry.size = img.naturalWidth * img.naturalHeight * 4;
+        }
+        entry.done = true;
+        loadProgress.loaded += entry.size;
+        resolve();
+      };
+
+      img.onerror = () => {
+        // Missing asset — renderer.js will handle gracefully
+        entry.done = true;
+        resolve();
+      };
+
+      // Start loading
+      img.src = path;
+    });
   }
 
-  await Promise.all(ALL_IMAGE_PATHS.map(fetchAndStream));
+  // Load images in parallel
+  await Promise.all(ALL_IMAGE_PATHS.map(loadImage));
   loadProgress.files.sort((a, b) => b.size - a.size);
   loadProgress.ready = true;
   assetsReady = true;
