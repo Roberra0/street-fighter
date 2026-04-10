@@ -12,6 +12,13 @@ let _overscanX = 0;  // extra pixels on each side of the 640 game area
 export function getOverscanX() { return _overscanX; }
 
 export function resize() {
+  // Guard: ensure window dimensions are valid (not 0 or extremely small)
+  if (window.innerWidth < 100 || window.innerHeight < 100) {
+    // Window dimensions not ready; schedule retry on next frame
+    requestAnimationFrame(resize);
+    return;
+  }
+
   const windowAR = window.innerWidth / window.innerHeight;
   const gameAR   = GW / GH;
 
