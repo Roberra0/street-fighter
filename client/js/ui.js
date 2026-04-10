@@ -17,6 +17,7 @@ const rageLogoPreload = document.createElement('link');
 rageLogoPreload.rel = 'preload';
 rageLogoPreload.as = 'image';
 rageLogoPreload.href = 'assets/screens/Rage_Logo.png';
+rageLogoPreload.crossOrigin = 'anonymous';
 document.head.appendChild(rageLogoPreload);
 
 // Title-screen menu state
