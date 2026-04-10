@@ -175,9 +175,10 @@ loadSpriteSheet(CHARACTERS['musk']);
 // ---- Asset loading gate (image decode preload with progress tracking) ----
 // Preloads images via Image objects and waits for actual decode/onload.
 // This ensures images are ready to render instantly when needed.
-// TOTAL_ASSET_BYTES is hardcoded from filesystem (run: stat -f '%z' assets/... | awk '{sum+=$1}END{print sum}')
-// Update this when adding/replacing assets.
-const TOTAL_ASSET_BYTES = 181291551;
+// Fight songs are lazy-loaded on demand (not preloaded).
+// TOTAL_ASSET_BYTES is hardcoded from filesystem (run: du -sh assets/ in bytes)
+// Update this when adding/replacing assets. Current: ~175MB (maps + sprites + screens + intro music)
+const TOTAL_ASSET_BYTES = 175000000;
 const loadProgress = { loaded: 0, total: TOTAL_ASSET_BYTES, files: [], ready: false };
 let assetsReady = false;
 
@@ -194,6 +195,11 @@ let assetsReady = false;
     'assets/screens/map.png',
     // Splash intro strips
     ...SPLASH_PATHS,
+    // Intro/menu music (preload these; fight songs lazy-load)
+    'assets/audio/music/intro.mp3',
+    'assets/audio/music/Rage_song.mp4',
+    'assets/audio/music/Rage_song2.mp4',
+    'assets/audio/music/Rage_song3.mp4',
     // Char select mugs + portraits (loaded by ui.js CHAR_DEFS)
     'assets/characters/sam_altman/altman_mug.png',      'assets/characters/sam_altman/altman_fullbody.png',
     'assets/characters/zuck/zuck_mug.png',              'assets/characters/zuck/zuck_fullbody.png',

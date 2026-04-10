@@ -8,12 +8,17 @@ let musicEl      = null;
 let currentTrack = null;
 let musicBaseVol = 0.4; // intended volume — tracked so duckMusic can restore correctly
 
+// Fight songs: lazy-loaded (not preloaded with game assets)
 const FIGHT_SONGS = [
-  'assets/audio/music/fight_song1.wav',
-  'assets/audio/music/fight_song2.wav',
-  'assets/audio/music/fight_song3.wav',
-  'assets/audio/music/fight_song4.wav',
-  'assets/audio/music/fight_song5.wav',
+  'assets/audio/music/fight_song1.mp3',
+  'assets/audio/music/fight_song2.mp3',
+  'assets/audio/music/fight_song3.mp3',
+  'assets/audio/music/fight_song4.mp3',
+  'assets/audio/music/fight_song5.mp3',
+];
+
+// Menu/intro songs: preloaded with game assets
+const INTRO_SONGS = [
   'assets/audio/music/intro.mp3',
   'assets/audio/music/Rage_song.mp4',
   'assets/audio/music/Rage_song2.mp4',
@@ -39,9 +44,23 @@ function duckMusic(durationMs) {
   setTimeout(() => { if (musicEl) musicEl.volume = musicBaseVol; }, durationMs);
 }
 
+// Preload a fight song in the background for smooth transitions
+function preloadFightSong(src) {
+  // Use Image object to preload (browser caches it for playMusic to use)
+  const link = document.createElement('link');
+  link.rel = 'preload';
+  link.as = 'audio';
+  link.href = src;
+  document.head.appendChild(link);
+}
+
 export function playFightMusic() {
   const src = FIGHT_SONGS[Math.floor(Math.random() * FIGHT_SONGS.length)];
   playMusic(src, 0.28); // 0.4 × 0.7 ≈ 0.28
+
+  // Preload next random song for smooth transitions
+  const nextSrc = FIGHT_SONGS[Math.floor(Math.random() * FIGHT_SONGS.length)];
+  preloadFightSong(nextSrc);
 }
 
 export function stopMusic() {
