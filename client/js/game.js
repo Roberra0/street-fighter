@@ -5,7 +5,7 @@ import * as input    from './input.js';
 import { canvas, ctx, drawBG, setActiveBG, drawShadow, drawFighterPlaceholder, drawProjectiles, drawOverlays, loadSpriteSheet, applyScreenShake, updateCamera, getCameraX, getStageWidth, getOverscanX } from './renderer.js';
 import { pushApart, resolveHits, clampToWalls } from './collision.js';
 import * as audio    from './audio.js';
-import { spawnHitSpark, spawnBlockSpark, updateParticles, drawParticles, clearParticles } from './particles.js';
+import { spawnBlockSpark, updateParticles, drawParticles, clearParticles } from './particles.js';
 import { drawHUD, drawMessage, drawTitle, drawCharSelect, drawMapSelect, drawPauseOverlay, drawControlsOverlay, drawHighScore, drawViewScores, drawLoading, drawSplash, getTitleMenuIndex, menuUp, menuDown, resetTitleMenu } from './ui.js';
 import { cpuSnapshot, getCpuDifficulty, setCpuDifficulty, resetCpuState } from './cpu.js';
 
@@ -176,10 +176,8 @@ loadSpriteSheet(CHARACTERS['musk']);
 // Preloads images via Image objects and waits for actual decode/onload.
 // This ensures images are ready to render instantly when needed.
 // Fight songs are lazy-loaded on demand (not preloaded).
-// TOTAL_ASSET_BYTES is hardcoded from filesystem (run: du -sh assets/ in bytes)
-// Update this when adding/replacing assets. Current: ~175MB (maps + sprites + screens + intro music)
-const TOTAL_ASSET_BYTES = 175000000;
-const loadProgress = { loaded: 0, total: TOTAL_ASSET_BYTES, files: [], ready: false };
+// Progress tracked by file count, not bytes (more accurate than hardcoded totals).
+const loadProgress = { loaded: 0, total: 0, files: [], recentFiles: [], ready: false };
 let assetsReady = false;
 
 (async () => {
@@ -196,11 +194,8 @@ let assetsReady = false;
     'assets/screens/map.png',
     // Splash intro strips
     ...SPLASH_PATHS,
-    // Intro/menu music (preload these; fight songs lazy-load)
+    // Audio: intro only. Other songs preload-while-playing (see audio.js strategy)
     'assets/audio/music/intro.mp3',
-    'assets/audio/music/Rage_song.mp4',
-    'assets/audio/music/Rage_song2.mp4',
-    'assets/audio/music/Rage_song3.mp4',
     // Char select mugs + portraits (loaded by ui.js CHAR_DEFS)
     'assets/characters/sam_altman/altman_mug.png',      'assets/characters/sam_altman/altman_fullbody.png',
     'assets/characters/zuck/zuck_mug.png',              'assets/characters/zuck/zuck_fullbody.png',
@@ -226,7 +221,10 @@ let assetsReady = false;
     }),
   ];
 
-  // Load each image and wait for onload. Track bytes and decode progress.
+  // Set total file count (progress tracked by file count, not bytes)
+  loadProgress.total = ALL_IMAGE_PATHS.length;
+
+  // Load each image and wait for onload. Track file count progress.
   function loadImage(path) {
     return new Promise((resolve) => {
       const entry = { name: path.split('/').pop(), path, size: 0, done: false, startTime: performance.now() };
@@ -242,7 +240,11 @@ let assetsReady = false;
         }
         entry.done = true;
         entry.loadTime = performance.now() - entry.startTime;
-        loadProgress.loaded += entry.size;
+        // Increment file count (not byte count)
+        loadProgress.loaded++;
+        // Keep last 3 files in recentFiles for UI display
+        loadProgress.recentFiles.push(entry.name);
+        if (loadProgress.recentFiles.length > 3) loadProgress.recentFiles.shift();
         console.log(`[preload] ${entry.name} loaded in ${entry.loadTime.toFixed(0)}ms (${(entry.size/1048576).toFixed(1)}MB)`);
         resolve();
       };
@@ -251,6 +253,9 @@ let assetsReady = false;
         // Missing asset — renderer.js will handle gracefully
         entry.done = true;
         entry.loadTime = performance.now() - entry.startTime;
+        loadProgress.loaded++;
+        loadProgress.recentFiles.push(entry.name);
+        if (loadProgress.recentFiles.length > 3) loadProgress.recentFiles.shift();
         console.warn(`[preload] ${entry.name} failed after ${entry.loadTime.toFixed(0)}ms`);
         resolve();
       };
@@ -599,7 +604,6 @@ function processEvents(events) {
         freezeTimer = 7;
         screenShake = 6;
       }
-      if (!ev.noSpark) spawnHitSpark(ev.x, ev.y);
     }
     if (ev.type === 'block') {
       audio.sfxBlock();
@@ -610,7 +614,6 @@ function processEvents(events) {
       audio.sfxFighterKO(ev.voiceSet);
       screenShake = 14;
       freezeTimer = 20;
-      if (!ev.noSpark) spawnHitSpark(ev.x, ev.y);
       koSlideFrame = 0;
     }
     if (ev.type === 'ko_thud') {
@@ -670,8 +673,8 @@ function processEvents(events) {
 // ---- Zuck influencer mob overlay ----
 // 25-frame strip (1792×720 each), spread evenly across 3s in front of the opponent.
 const ZUCK_MOB_COLS      = 25;
-const ZUCK_MOB_FRAMEW    = 1792;
-const ZUCK_MOB_FRAMEH    = 720;
+const ZUCK_MOB_FRAMEW    = 896;  // halved from 1792 (image compressed to 50%)
+const ZUCK_MOB_FRAMEH    = 360;  // halved from 720 (image compressed to 50%)
 const ZUCK_MOB_DURATION  = 3000; // ms total
 const ZUCK_MOB_CROP_LEFT = 3;    // strip left pixels to hide black edge line
 const ZUCK_MOB_W         = 560;  // display width on canvas
@@ -777,11 +780,13 @@ function render(renderTime) {
   if (gameState === 'splash') {
     const elapsed = renderTime - splashStartTime;
     let advanced = false;
+    const menuRight = input.isMenuRight();
+    const menuLeft = input.isMenuLeft();
     // Once user navigates with arrows, disable auto-advance entirely
-    if (input.isMenuRight() || input.isMenuLeft()) splashManual = true;
+    if (menuRight || menuLeft) splashManual = true;
     const holdMs = splashIdx === 0 ? 25000 : 15000;
     const timerFired = !splashManual && elapsed >= holdMs;
-    if (input.isMenuRight() || timerFired) {
+    if (menuRight || timerFired) {
       if (splashIdx < splashImgs.length - 1) {
         splashIdx++;
         splashStartTime = renderTime;
@@ -794,7 +799,7 @@ function render(renderTime) {
         input.clearFrame();
       }
     }
-    if (!advanced && input.isMenuLeft() && splashIdx > 0) {
+    if (!advanced && menuLeft && splashIdx > 0) {
       splashIdx--;
       splashStartTime = renderTime;
     }

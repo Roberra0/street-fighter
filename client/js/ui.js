@@ -85,16 +85,31 @@ export function drawLoading(ctx, progress, renderTime) {
   ctx.lineWidth = 1;
   ctx.strokeRect(barX, barY, barW, barH);
 
-  // Percentage + byte count (capped at 100%)
-  const mb = n => (n / 1048576).toFixed(1) + ' MB';
+  // File count progress (X of Y files)
   ctx.font = 'bold 9px monospace';
-  ctx.fillStyle = '#fff';
+  // Change color to green when complete
+  ctx.fillStyle = pct === 1 ? '#00ff00' : '#fff';
   ctx.fillText(Math.min(Math.round(pct * 100), 100) + '%', GW / 2, barY + barH + 14);
   ctx.font = '8px monospace';
-  ctx.fillStyle = '#888';
-  // Cap numerator display at total (no more showing >100%)
-  const displayLoaded = Math.min(progress.loaded, progress.total);
-  ctx.fillText(mb(displayLoaded) + ' / ' + mb(progress.total), GW / 2, barY + barH + 26);
+  ctx.fillStyle = pct === 1 ? '#00ff00' : '#888';
+  ctx.fillText(`${progress.loaded} / ${progress.total} files`, GW / 2, barY + barH + 26);
+
+  // Display up to 3 recent files being loaded (visual feedback of activity)
+  if (progress.recentFiles && progress.recentFiles.length > 0) {
+    ctx.font = '7px monospace';
+    ctx.fillStyle = pct === 1 ? '#00ff00' : '#666';
+    const fileY = barY + barH + 42;
+    progress.recentFiles.forEach((filename, i) => {
+      ctx.fillText(`• ${filename}`, GW / 2, fileY + i * 10);
+    });
+  }
+
+  // Show completion message when done
+  if (pct === 1) {
+    ctx.font = 'bold 12px monospace';
+    ctx.fillStyle = '#00ff00';
+    ctx.fillText('COMPLETE!', GW / 2, barY + barH + 65);
+  }
 }
 
 export function drawSplash(ctx, img, idx, total, timer) {

@@ -20,10 +20,23 @@ const FIGHT_SONGS = [
 // Menu/intro songs: preloaded with game assets
 const INTRO_SONGS = [
   'assets/audio/music/intro.mp3',
+];
+
+const MENU_SONGS = [
   'assets/audio/music/Rage_song.mp4',
   'assets/audio/music/Rage_song2.mp4',
   'assets/audio/music/Rage_song3.mp4',
 ];
+
+// Preload audio in background using link preload
+function preloadAudio(src) {
+  const link = document.createElement('link');
+  link.rel = 'preload';
+  link.as = 'audio';
+  link.href = src;
+  link.crossOrigin = 'anonymous';
+  document.head.appendChild(link);
+}
 
 export function playMusic(src, volume = 0.4) {
   if (currentTrack === src) return; // already playing
@@ -35,6 +48,12 @@ export function playMusic(src, volume = 0.4) {
   musicEl.play().catch(() => {});
   currentTrack = src;
   console.log(`[audio] music: ${src}`);
+
+  // Preload next menu song while this one plays (if it's a menu song)
+  if (MENU_SONGS.includes(src)) {
+    const nextSrc = MENU_SONGS[Math.floor(Math.random() * MENU_SONGS.length)];
+    preloadAudio(nextSrc);
+  }
 }
 
 // Duck music by 33% for durationMs then restore — used for voice-over clips

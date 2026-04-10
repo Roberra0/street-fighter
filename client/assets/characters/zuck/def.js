@@ -41,24 +41,24 @@ export default {
     airHit:      { frames:  25, fps: 40, loop: false },
   },
 
-  // Per-animation sprite sheets
+  // Per-animation sprite sheets (compressed: cropped & scaled, no runtime crop/scale needed)
   animSheetDivisor: 1,
-  animSheetScale:   0.85,
-  animSheetScaleY:  0.95,
-  animSheetOffsetY: 0,   // TODO: tune vertical offset
-  animSheetCropX:   50,  // TODO: tune horizontal crop
-  animSheetCropW:   280, // TODO: tune visible width
-  animSheetFadeR:   20,  // gradient fade on right edge to soften crop line
+  animSheetScale:   1.0,   // crop+scale baked into files
+  animSheetScaleY:  1.0,
+  animSheetOffsetY: 0,
+  animSheetCropX:   0,     // no crop needed (already cropped)
+  animSheetCropW:   238,   // new frame width after crop+scale
+  animSheetFadeR:   20,
   animSheets: {
-    walk:    { src: 'assets/characters/zuck/zuck2_walk.png',   cols: 25, frameW: 382, frameH: 216 },
-    punch:   { src: 'assets/characters/zuck/zuck2_punch.png',  cols: 25, frameW: 382, frameH: 216 },
-    block:   { src: 'assets/characters/zuck/zuck2_block.png',  cols: 25, frameW: 382, frameH: 216 },
-    ko:      { src: 'assets/characters/zuck/zuck2_ko.png',     cols: 25, frameW: 382, frameH: 216, cropX: 0, cropW: 382 },
-    recoil:  { src: 'assets/characters/zuck/zuck2_recoil.png', cols: 25, frameW: 382, frameH: 216 },
-    crouch:  { src: 'assets/characters/zuck/zuck2_crouch.png', cols: 25, frameW: 382, frameH: 216 },
-    jump:    { src: 'assets/characters/zuck/zuck2_jump.png',   cols: 25, frameW: 382, frameH: 216 },
-    kick:    { src: 'assets/characters/zuck/zuck2_kick.png',   cols: 25, frameW: 382, frameH: 216 },
-    idle:    { src: 'assets/characters/zuck/zuck2_idle.png',   cols: 25, frameW: 382, frameH: 216 },
+    walk:    { src: 'assets/characters/zuck/zuck2_walk.webp',   cols: 25, frameW: 238, frameH: 205 },
+    punch:   { src: 'assets/characters/zuck/zuck2_punch.webp',  cols: 25, frameW: 238, frameH: 205 },
+    block:   { src: 'assets/characters/zuck/zuck2_block.webp',  cols: 25, frameW: 238, frameH: 205 },
+    ko:      { src: 'assets/characters/zuck/zuck2_ko.webp',     cols: 25, frameW: 238, frameH: 205 },
+    recoil:  { src: 'assets/characters/zuck/zuck2_recoil.webp', cols: 25, frameW: 238, frameH: 205 },
+    crouch:  { src: 'assets/characters/zuck/zuck2_crouch.webp', cols: 25, frameW: 238, frameH: 205 },
+    jump:    { src: 'assets/characters/zuck/zuck2_jump.webp',   cols: 25, frameW: 238, frameH: 205 },
+    kick:    { src: 'assets/characters/zuck/zuck2_kick.webp',   cols: 25, frameW: 238, frameH: 205 },
+    idle:    { src: 'assets/characters/zuck/zuck2_idle.webp',   cols: 25, frameW: 238, frameH: 205 },
   },
   portrait: null,
 };

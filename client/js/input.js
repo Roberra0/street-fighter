@@ -145,13 +145,29 @@ export function isTabKey() { return pressedThisAccum.get('Tab'); }
 export function isDebugKey() { return pressedThisAccum.get('KeyI'); }
 
 // Arrow-key edge triggers for menu navigation.
-export function isMenuUp()   { return pressedThisAccum.get('ArrowUp');   }
-export function isMenuDown() { return pressedThisAccum.get('ArrowDown'); }
+export function isMenuUp() {
+  const c = pressedThisAccum.get('ArrowUp');
+  if (c) pressedThisAccum.delete('ArrowUp');
+  return c;
+}
+export function isMenuDown() {
+  const c = pressedThisAccum.get('ArrowDown');
+  if (c) pressedThisAccum.delete('ArrowDown');
+  return c;
+}
 
 // Left/right edge triggers for character select navigation — always arrow keys.
 // Char select is sequential so both players can share the same keys.
-export function isMenuLeft()  { return pressedThisAccum.get('ArrowLeft');  }
-export function isMenuRight() { return pressedThisAccum.get('ArrowRight'); }
+export function isMenuLeft() {
+  const c = pressedThisAccum.get('ArrowLeft');
+  if (c) pressedThisAccum.delete('ArrowLeft');
+  return c;
+}
+export function isMenuRight() {
+  const c = pressedThisAccum.get('ArrowRight');
+  if (c) pressedThisAccum.delete('ArrowRight');
+  return c;
+}
 
 // Returns the first A-Z letter typed this frame (consuming it), or null.
 export function getTypedLetter() {

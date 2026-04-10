@@ -67,6 +67,7 @@ export class Fighter {
     this.vx       = 0;
     this.vy       = 0;
     this.hp       = this.def.stats.hp;
+    this.facing   = this.def.facing;
     this._state   = 'idle';
     this.timer    = 0;
     this.didHit   = false;

@@ -1,7 +1,7 @@
 // cpu.js — Probability-based reactive CPU AI
 
 // ---- Difficulty ----
-let cpuDifficulty = 1;
+let cpuDifficulty = 2;
 export function getCpuDifficulty() { return cpuDifficulty; }
 export function setCpuDifficulty(n) { cpuDifficulty = Math.max(1, Math.min(3, n)); }
 
@@ -36,19 +36,19 @@ const PARAMS = {
     reactBlock: 15, punishRate: 10, attackRate: 20, heavyRate: 10,
     kickRate: 40, approachRate: 50, retreatRate: 10, idleChance: 40,
     reactionDelay: 8, commitWalkMin: 15, commitWalkMax: 30,
-    commitBlockMin: 8, commitBlockMax: 15,
+    commitBlockMin: 60, commitBlockMax: 90,
   },
   2: { // Medium — decent reactions, mixes attacks
     reactBlock: 45, punishRate: 35, attackRate: 40, heavyRate: 25,
     kickRate: 50, approachRate: 70, retreatRate: 25, idleChance: 20,
     reactionDelay: 4, commitWalkMin: 10, commitWalkMax: 22,
-    commitBlockMin: 10, commitBlockMax: 20,
+    commitBlockMin: 60, commitBlockMax: 120,
   },
   3: { // Hard — fast reactions, blocks most attacks, punishes well
     reactBlock: 80, punishRate: 70, attackRate: 55, heavyRate: 40,
     kickRate: 50, approachRate: 90, retreatRate: 35, idleChance: 5,
     reactionDelay: 1, commitWalkMin: 8, commitWalkMax: 16,
-    commitBlockMin: 12, commitBlockMax: 25,
+    commitBlockMin: 60, commitBlockMax: 150,
   },
 };
 

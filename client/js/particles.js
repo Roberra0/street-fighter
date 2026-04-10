@@ -3,20 +3,6 @@
 
 let particles = [];
 
-export function spawnHitSpark(x, y) {
-  for (let i = 0; i < 6; i++) {
-    particles.push({
-      x,
-      y,
-      vx: (Math.random() - 0.5) * 4,
-      vy: (Math.random() - 0.7) * 3,
-      life: 10 + Math.random() * 8,
-      color: Math.random() > 0.5 ? '#ff0' : '#fff',
-      size: 2 + Math.random() * 2,
-    });
-  }
-}
-
 export function spawnBlockSpark(x, y) {
   for (let i = 0; i < 4; i++) {
     particles.push({
