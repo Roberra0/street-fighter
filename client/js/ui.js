@@ -9,8 +9,15 @@ export const BUILD = '2026-03-24 22:29 PST v8';
 let titleBlink = 0;
 
 // Preload the Rage logo for the loading screen
+// Load Rage logo immediately (before game preload system) for early display on loading screen
 const rageLogo = new Image();
 rageLogo.src = 'assets/screens/Rage_Logo.png';
+// Preload link to ensure it loads with high priority
+const rageLogoPreload = document.createElement('link');
+rageLogoPreload.rel = 'preload';
+rageLogoPreload.as = 'image';
+rageLogoPreload.href = 'assets/screens/Rage_Logo.png';
+document.head.appendChild(rageLogoPreload);
 
 // Title-screen menu state
 const MENU_ITEMS = ['VERSUS MODE', 'PRACTICE MODE', 'STORY MODE'];
@@ -65,10 +72,10 @@ export function drawLoading(ctx, progress, renderTime) {
     return;
   }
 
-  // ---- Progress bar at bottom ----
+  // ---- Progress bar (moved higher, where welcome text will be) ----
   const pct  = progress.total > 0 ? Math.min(progress.loaded / progress.total, 1) : 0;
   const barW = 320, barH = 10;
-  const barX = (GW - barW) / 2, barY = GH - 80;
+  const barX = (GW - barW) / 2, barY = GH / 2 + 25;  // Moved higher
   ctx.fillStyle = '#222';
   ctx.fillRect(barX, barY, barW, barH);
   ctx.fillStyle = '#ffcc44';
@@ -77,14 +84,16 @@ export function drawLoading(ctx, progress, renderTime) {
   ctx.lineWidth = 1;
   ctx.strokeRect(barX, barY, barW, barH);
 
-  // Percentage + byte count
+  // Percentage + byte count (capped at 100%)
   const mb = n => (n / 1048576).toFixed(1) + ' MB';
   ctx.font = 'bold 9px monospace';
   ctx.fillStyle = '#fff';
-  ctx.fillText(Math.round(pct * 100) + '%', GW / 2, barY + barH + 14);
+  ctx.fillText(Math.min(Math.round(pct * 100), 100) + '%', GW / 2, barY + barH + 14);
   ctx.font = '8px monospace';
   ctx.fillStyle = '#888';
-  ctx.fillText(mb(progress.loaded) + ' / ' + mb(progress.total), GW / 2, barY + barH + 26);
+  // Cap numerator display at total (no more showing >100%)
+  const displayLoaded = Math.min(progress.loaded, progress.total);
+  ctx.fillText(mb(displayLoaded) + ' / ' + mb(progress.total), GW / 2, barY + barH + 26);
 }
 
 export function drawSplash(ctx, img, idx, total, timer) {

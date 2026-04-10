@@ -184,13 +184,14 @@ let assetsReady = false;
 
 (async () => {
   const ALL_IMAGE_PATHS = [
+    // PRIORITY: Loading screen logo (load first so it appears immediately)
+    'assets/screens/Rage_Logo.png',
     // Maps
     ...MAP_DEFS.map(m => m.src),
     // Special sprites
     'assets/characters/musk/tesla_sprite.png',
     'assets/characters/zuck/influencer_mob.png',
     // Screen images (loaded by ui.js)
-    'assets/screens/Rage_Logo.png',
     'assets/screens/vs.png',
     'assets/screens/map.png',
     // Splash intro strips
