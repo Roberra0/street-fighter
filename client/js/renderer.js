@@ -204,6 +204,29 @@ export function loadSpriteSheet(def) {
   }
 }
 
+// Load sprite sheets for a character and wait for all images to load.
+// Returns a Promise that resolves when all images are ready.
+export function loadSpriteSheetAsync(def) {
+  loadSpriteSheet(def); // Create Image objects on def
+  const imgs = [];
+  if (def._spriteImage) imgs.push(def._spriteImage);
+  if (def._idleImage) imgs.push(def._idleImage);
+  if (def._customSheetImage) imgs.push(def._customSheetImage);
+  if (def._animSheetImages) imgs.push(...Object.values(def._animSheetImages));
+  if (def.overlay?._img) imgs.push(def.overlay._img);
+  if (def.projectile?._imgs) imgs.push(...def.projectile._imgs);
+
+  // Wait for all images that haven't loaded yet
+  return Promise.all(
+    imgs.filter(img => !img.complete).map(img =>
+      new Promise(resolve => {
+        img.onload = () => resolve();
+        img.onerror = () => resolve(); // Resolve even on error to not block
+      })
+    )
+  );
+}
+
 export function drawProjectiles(projs) {
   for (const proj of projs) {
     if (!proj.active) continue;

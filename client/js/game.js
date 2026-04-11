@@ -2,7 +2,7 @@
 
 import { Fighter, CHARACTERS } from './fighter.js';
 import * as input    from './input.js';
-import { canvas, ctx, drawBG, setActiveBG, drawShadow, drawFighterPlaceholder, drawProjectiles, drawOverlays, loadSpriteSheet, applyScreenShake, updateCamera, getCameraX, getStageWidth, getOverscanX } from './renderer.js';
+import { canvas, ctx, drawBG, setActiveBG, drawShadow, drawFighterPlaceholder, drawProjectiles, drawOverlays, loadSpriteSheet, loadSpriteSheetAsync, applyScreenShake, updateCamera, getCameraX, getStageWidth, getOverscanX } from './renderer.js';
 import { pushApart, resolveHits, clampToWalls } from './collision.js';
 import * as audio    from './audio.js';
 import { spawnBlockSpark, updateParticles, drawParticles, clearParticles } from './particles.js';
@@ -159,18 +159,7 @@ let showControls = false;
 let showDebug    = false;
 
 // ---- Fighters ----
-// Preload sprite sheets for characters that have one
-loadSpriteSheet(CHARACTERS['rio']);
-loadSpriteSheet(CHARACTERS['zuri']);
-loadSpriteSheet(CHARACTERS['dre']);
-loadSpriteSheet(CHARACTERS['sid']);
-loadSpriteSheet(CHARACTERS['jax']);
-loadSpriteSheet(CHARACTERS['zuck']);
-loadSpriteSheet(CHARACTERS['altman']);
-loadSpriteSheet(CHARACTERS['bezos']);
-loadSpriteSheet(CHARACTERS['jensen']);
-loadSpriteSheet(CHARACTERS['young_bezos']);
-loadSpriteSheet(CHARACTERS['musk']);
+// Character sprites are now lazy-loaded when selected (see charSelect state below)
 
 // ---- Asset loading gate (image decode preload with progress tracking) ----
 // Preloads images via Image objects and waits for actual decode/onload.
@@ -208,17 +197,7 @@ let assetsReady = false;
     'assets/characters/dre/dread_mug.png',            'assets/characters/dre/dread_fullbody.png',
     'assets/characters/sid/skater_mug.png',          'assets/characters/sid/skater_fullbody.png',
     'assets/characters/jax/tech_mug.png',          'assets/characters/jax/tech_fullbody.png',
-    // Character sprite sheets (from CHARACTERS defs)
-    ...Object.values(CHARACTERS).flatMap(def => {
-      const paths = [];
-      if (def.spriteSheet)      paths.push(def.spriteSheet);
-      if (def.idleSheet)        paths.push(def.idleSheet);
-      if (def.customSheet)      paths.push(def.customSheet);
-      if (def.animSheets)       paths.push(...Object.values(def.animSheets).map(s => s.src));
-      if (def.overlay?.src)     paths.push(def.overlay.src);
-      if (def.projectile?.srcs) paths.push(...def.projectile.srcs);
-      return paths;
-    }),
+    // Character sprite sheets lazy-loaded on selection (see charSelect state)
   ];
 
   // Set total file count (progress tracked by file count, not bytes)
@@ -894,16 +873,20 @@ function render(renderTime) {
       if (menuNavCooldown === 0 && input.isMenuDown())  { p2SelIdx = csGridNav(p2SelIdx, 'down');  menuNavCooldown = MENU_NAV_DELAY; audio.sfxScroll(); }
       if (input.isMenuConfirm()) { p2SelIdx = resolveRandom(p2SelIdx); p2Confirmed = true; audio.sfxConfirmation(); }
     }
-    // Once both confirmed → wait 1 second then go to map select
+    // Once both confirmed → lazy load their sprites, then go to map select
     if (p1Confirmed && p2Confirmed) {
-      if (charSelectDelay === 0) charSelectDelay = 60;
-      charSelectDelay--;
       if (charSelectDelay === 0) {
-        mapSelIdx       = 0;
-        gameState       = 'mapSelect';
-        menuNavCooldown = MENU_NAV_DELAY;
-        input.clearFrame();
+        charSelectDelay = -1; // Sentinel: loading in progress
+        const d1 = CHARACTERS[CHAR_IDS[p1SelIdx]];
+        const d2 = CHARACTERS[CHAR_IDS[p2SelIdx]];
+        Promise.all([loadSpriteSheetAsync(d1), loadSpriteSheetAsync(d2)]).then(() => {
+          mapSelIdx       = 0;
+          gameState       = 'mapSelect';
+          menuNavCooldown = MENU_NAV_DELAY;
+          input.clearFrame();
+        });
       }
+      // charSelectDelay === -1: sprites loading, keep drawing charSelect screen
     }
     ctx.save(); ctx.translate(osX, 0);
     drawCharSelect(ctx, drawBG, renderTime, {
