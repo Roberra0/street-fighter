@@ -67,13 +67,13 @@ export default {
   animSheetCropX:   50,     // px from left edge of each frame to character
   animSheetCropW:   280,    // width of visible character area per frame
   animSheets: {
-    idle:   { src: 'assets/characters/zuri/lady_kickboxer_idle',   cols: 4,  frameW: 382, frameH: 216 },
-    walk:   { src: 'assets/characters/zuri/lady_kickboxer_walk',   cols: 9,  frameW: 382, frameH: 216 },
-    jump:   { src: 'assets/characters/zuri/lady_kickboxer_jump',   cols: 12, frameW: 382, frameH: 216 },
-    kick:   { src: 'assets/characters/zuri/lady_kickboxer_kick',   cols: 14, frameW: 382, frameH: 216 },
-    punch:  { src: 'assets/characters/zuri/lady_kickboxer_punch',  cols: 7,  frameW: 382, frameH: 216 },
-    recoil: { src: 'assets/characters/zuri/lady_kickboxer_recoil', cols: 13, frameW: 382, frameH: 216 },
-    block:  { src: 'assets/characters/zuri/kickboxer_block.png',   cols: 13, frameW: 382, frameH: 216 },
+    idle:   { src: 'assets/characters/zuri/lady_kickboxer_idle.webp',   cols: 4,  frameW: 382, frameH: 216 },
+    walk:   { src: 'assets/characters/zuri/lady_kickboxer_walk.webp',   cols: 9,  frameW: 382, frameH: 216 },
+    jump:   { src: 'assets/characters/zuri/lady_kickboxer_jump.webp',   cols: 12, frameW: 382, frameH: 216 },
+    kick:   { src: 'assets/characters/zuri/lady_kickboxer_kick.webp',   cols: 14, frameW: 382, frameH: 216 },
+    punch:  { src: 'assets/characters/zuri/lady_kickboxer_punch.webp',  cols: 7,  frameW: 382, frameH: 216 },
+    recoil: { src: 'assets/characters/zuri/lady_kickboxer_recoil.webp', cols: 13, frameW: 382, frameH: 216 },
+    block:  { src: 'assets/characters/zuri/kickboxer_block.webp',   cols: 13, frameW: 382, frameH: 216 },
   },
   portrait: null,
 };

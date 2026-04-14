@@ -6,7 +6,7 @@ import { canvas, ctx, drawBG, setActiveBG, drawShadow, drawFighterPlaceholder, d
 import { pushApart, resolveHits, clampToWalls } from './collision.js';
 import * as audio    from './audio.js';
 import { spawnBlockSpark, updateParticles, drawParticles, clearParticles } from './particles.js';
-import { drawHUD, drawMessage, drawTitle, drawCharSelect, drawMapSelect, drawPauseOverlay, drawControlsOverlay, drawHighScore, drawViewScores, drawLoading, drawPreFightLoading, drawSplash, getTitleMenuIndex, menuUp, menuDown, resetTitleMenu, setRageLogo, setVsImage, CHAR_DEFS, loadCharSelectAssets } from './ui.js';
+import { drawHUD, drawMessage, drawTitle, drawCharSelect, drawMapSelect, drawPauseOverlay, drawControlsOverlay, drawHighScore, drawViewScores, drawLoading, drawPreFightLoading, drawSplash, getTitleMenuIndex, menuUp, menuDown, resetTitleMenu, setRageLogo, setVsImage, setKeyboardImg, CHAR_DEFS, loadCharSelectAssets } from './ui.js';
 import { cpuSnapshot, getCpuDifficulty, setCpuDifficulty, resetCpuState } from './cpu.js';
 
 // ---- Constants ----
@@ -97,6 +97,9 @@ let zuckMobImg = null;
 
 // ---- Altman KO sprite (lazy-loaded when altman is selected) ----
 let altmanKoImg = null;
+
+// ---- Key layout image (controls display for pre-fight) ----
+let keyLayoutImg = null;
 
 // ---- Score (1P mode) ----
 let p1Score = 0;
@@ -269,7 +272,7 @@ let assetsReady = false;
     }, { once: true });
   });
 
-  loadProgress.total = 1 + mugPortraitPaths.length + splashStripPaths.length + 1 + 1; // logo + mugs/portraits + strips + intro music + vs
+  loadProgress.total = 1 + mugPortraitPaths.length + splashStripPaths.length + 1 + 1 + 1; // logo + mugs/portraits + strips + intro music + vs + keyboard
 
   // Load splash strip images into the splashImgs array so they're ready for drawSplash
   const splashLoads = splashStripPaths.map((src, i) => {
@@ -277,14 +280,17 @@ let assetsReady = false;
   });
 
   const vsLoad = loadImage('assets/screens/vs.webp');
+  const keyboardLoad = loadImage('assets/screens/key_layout.webp');
 
-  const [mugPortraitImgs, , , vsImg] = await Promise.all([
+  const [mugPortraitImgs, , , vsImg, keyboardImgLoaded] = await Promise.all([
     Promise.all(mugPortraitPaths.map(loadImage)),
     Promise.all(splashLoads),
     introMusicReady,
     vsLoad,
+    keyboardLoad,
   ]);
   setVsImage(vsImg);
+  setKeyboardImg(keyboardImgLoaded);
   const preloadEnd = performance.now();
   console.log(`[preload] All assets loaded in ${(preloadEnd - preloadStart).toFixed(0)}ms`);
 
@@ -305,6 +311,18 @@ let assetsReady = false;
   loadProgress.ready = true;
   assetsReady = true;
   console.log(`[preload] assetsReady = true at ${performance.now().toFixed(0)}ms`);
+
+  // --- Tier 2: Background preload (maps, overlays) starts immediately after Tier 1 ---
+  console.log(`[preload] Tier 2 background preload starting`);
+  loadCharSelectAssets(); // preload map.webp
+  // Preload map backgrounds
+  MAP_DEFS.forEach(m => {
+    if (!m._img) { const img = new Image(); img.src = m.src; m._img = img; }
+  });
+  // Preload character overlay images
+  preloadImage('assets/characters/musk/tesla_abbrv.png');
+  preloadImage('assets/characters/zuck/influencer_abbrv.png');
+  preloadImage('assets/characters/sam_altman/altman_block2_sprites_20frame.png');
 })();
 
 let p1 = new Fighter(CHARACTERS['altman'], 0);
@@ -818,15 +836,7 @@ function render(renderTime) {
     ctx.restore();
     if (assetsReady && input.isAnyKey()) {
       audio.initAudio();
-      loadCharSelectAssets(); // preload map.webp while user watches splash
-      // Preload map backgrounds so they're cached by mapSelect
-      MAP_DEFS.forEach(m => {
-        if (!m._img) { const img = new Image(); img.src = m.src; m._img = img; }
-      });
-      // Preload character overlay images in background
-      preloadImage('assets/characters/musk/tesla_abbrv.png');
-      preloadImage('assets/characters/zuck/influencer_abbrv.png');
-      preloadImage('assets/characters/sam_altman/altman_block2_sprites_20frame.png');
+      // Tier 2 background preload already started when Tier 1 completed
       splashIdx = 0;
       splashStartTime = renderTime;
       splashManual = false;
@@ -1010,15 +1020,15 @@ function render(renderTime) {
       const d2 = CHARACTERS[CHAR_IDS[p2SelIdx]];
       // Lazy-load musk's tesla sprite only if musk is selected
       if (d1.id === 'musk' || d2.id === 'musk') {
-        if (!teslaImg) { teslaImg = new Image(); teslaImg.src = 'assets/characters/musk/tesla_abbrv.png'; }
+        if (!teslaImg) { teslaImg = new Image(); teslaImg.crossOrigin = 'anonymous'; teslaImg.src = 'assets/characters/musk/tesla_abbrv.png'; }
       }
       // Lazy-load zuck's mob sprite only if zuck is selected
       if (d1.id === 'zuck' || d2.id === 'zuck') {
-        if (!zuckMobImg) { zuckMobImg = new Image(); zuckMobImg.src = 'assets/characters/zuck/influencer_abbrv.png'; }
+        if (!zuckMobImg) { zuckMobImg = new Image(); zuckMobImg.crossOrigin = 'anonymous'; zuckMobImg.src = 'assets/characters/zuck/influencer_abbrv.png'; }
       }
       // Lazy-load altman's KO sprite only if altman is selected
       if (d1.id === 'altman' || d2.id === 'altman') {
-        if (!altmanKoImg) { altmanKoImg = new Image(); altmanKoImg.src = 'assets/characters/sam_altman/altman_ko.png'; }
+        if (!altmanKoImg) { altmanKoImg = new Image(); altmanKoImg.crossOrigin = 'anonymous'; altmanKoImg.src = 'assets/characters/sam_altman/altman_ko.png'; }
       }
       const sw = getStageWidth();
       p1 = new Fighter({ ...d1, startX: Math.round(sw / 2 - 100), facing:  1 }, 0);
@@ -1038,6 +1048,12 @@ function render(renderTime) {
 
   // Pre-fight loading gate — wait for sprites/map/extras before starting fight
   if (gameState === 'preFight') {
+    // Load key layout image on first enter
+    if (!keyLayoutImg) {
+      keyLayoutImg = new Image();
+      keyLayoutImg.src = 'assets/screens/key_layout.webp';
+    }
+
     const d1p = getDefLoadProgress(p1.def);
     const d2p = getDefLoadProgress(p2.def);
     const mapImg = MAP_DEFS[mapSelIdx]._img;
@@ -1061,12 +1077,24 @@ function render(renderTime) {
     drawBG();
     ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
     ctx.fillRect(0, 0, 640, 360);
+
+    // Draw key layout at top if loaded
+    if (keyLayoutImg && keyLayoutImg.complete && keyLayoutImg.naturalWidth > 0) {
+      const maxW = GW * 0.8;
+      const scale = Math.min(1, maxW / keyLayoutImg.naturalWidth);
+      const w = keyLayoutImg.naturalWidth * scale;
+      const h = keyLayoutImg.naturalHeight * scale;
+      const x = (GW - w) / 2;
+      ctx.drawImage(keyLayoutImg, x, 10, w, h);
+    }
+
     drawPreFightLoading(ctx, { loaded: loadedAssets, total: totalAssets, ready: allReady });
     ctx.restore();
 
-    if (allReady) {
+    if (allReady && input.isAnyKey()) {
       mapConfirmed = false;
       audio.sfxLaughWithDelay(() => { startRound(); }, 1000);
+      input.clearFrame();
       gameState = 'preFightWait';
     }
     return;

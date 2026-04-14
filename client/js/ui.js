@@ -38,25 +38,41 @@ export function menuDown() {
 
 // Minimal pre-fight loading overlay — drawn on top of map background by caller
 export function drawPreFightLoading(ctx, progress) {
+  ctx.fillStyle = '#000';
+  ctx.fillRect(0, 0, GW, GH);
+
   const pct = progress.total > 0 ? Math.min(progress.loaded / progress.total, 1) : 0;
 
+  // ---- Keyboard image (centered) ----
+  if (keyboardImg && keyboardImg.complete && keyboardImg.naturalWidth > 0) {
+    const maxKeyW = GW * 0.70;
+    const maxKeyH = GH * 0.30;
+    const scale = Math.min(maxKeyW / keyboardImg.naturalWidth, maxKeyH / keyboardImg.naturalHeight);
+    const dw = keyboardImg.naturalWidth * scale;
+    const dh = keyboardImg.naturalHeight * scale;
+    const dx = (GW - dw) / 2;
+    const dy = 50;
+    ctx.imageSmoothingEnabled = true;
+    ctx.drawImage(keyboardImg, dx, dy, dw, dh);
+  }
+
+  ctx.textAlign = 'center';
+
   if (progress.ready) {
-    ctx.textAlign = 'center';
-    ctx.font = 'bold 16px monospace';
+    ctx.font = 'bold 14px monospace';
     ctx.fillStyle = '#ffcc44';
-    ctx.fillText('GET READY', GW / 2, GH / 2);
+    ctx.fillText('press any key to continue', GW / 2, 190);
     return;
   }
 
-  // Thin gold bar centered
+  // Thin gold bar centered below keyboard
   const barW = 200, barH = 4;
-  const barX = (GW - barW) / 2, barY = GH / 2 + 10;
+  const barX = (GW - barW) / 2, barY = GH / 2 + 100;
   ctx.fillStyle = '#222';
   ctx.fillRect(barX, barY, barW, barH);
   ctx.fillStyle = '#ffcc44';
   ctx.fillRect(barX, barY, Math.round(barW * pct), barH);
 
-  ctx.textAlign = 'center';
   ctx.font = 'bold 10px monospace';
   ctx.fillStyle = '#aaa';
   ctx.fillText(Math.round(pct * 100) + '%', GW / 2, barY - 8);
@@ -128,7 +144,7 @@ export function drawLoading(ctx, progress, renderTime) {
   if (pct === 1) {
     ctx.font = 'bold 12px monospace';
     ctx.fillStyle = '#00ff00';
-    ctx.fillText('COMPLETE!', GW / 2, barY + barH + 65);
+    ctx.fillText('COMPLETE!', GW / 2, barY + barH + 85);
   }
 }
 
@@ -659,9 +675,11 @@ _randomQCanvas.width = 16; _randomQCanvas.height = 16;
 
 // Deferred screen assets — loaded when needed, not at module parse
 let _vsImg = new Image();
+let keyboardImg = null;
 const _mapWorldImg = new Image();
 
 export function setVsImage(img) { if (img) _vsImg = img; }
+export function setKeyboardImg(img) { keyboardImg = img; }
 
 export function loadCharSelectAssets() {
   if (!_mapWorldImg.src) _mapWorldImg.src = 'assets/screens/map.webp';

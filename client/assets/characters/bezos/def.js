@@ -49,15 +49,15 @@ export default {
   animSheetCropX:   50,  // TODO: tune horizontal crop
   animSheetCropW:   280, // TODO: tune visible width
   animSheets: {
-    walk:    { src: 'assets/characters/bezos/jacked_jeff_walk.png',   cols: 25, frameW: 382, frameH: 216 },
-    punch:   { src: 'assets/characters/bezos/jacked_jeff_punch.png',  cols: 25, frameW: 382, frameH: 216 },
+    walk:    { src: 'assets/characters/bezos/jacked_jeff_walk.webp',   cols: 25, frameW: 382, frameH: 216 },
+    punch:   { src: 'assets/characters/bezos/jacked_jeff_punch.webp',  cols: 25, frameW: 382, frameH: 216 },
     block:   { src: 'assets/characters/bezos/jacked_jeff_blockedvf.png',  cols: 25, frameW: 382, frameH: 216 },
-    ko:      { src: 'assets/characters/bezos/jacked_jeff_kofinal.png', cols: 25, frameW: 382, frameH: 216, cropX: 0, cropW: 382 },
-    recoil:  { src: 'assets/characters/bezos/jacked_jeff_recoil.png', cols: 25, frameW: 382, frameH: 216 },
-    crouch:  { src: 'assets/characters/bezos/jacked_jeff_crouch2.png', cols: 25, frameW: 382, frameH: 216 },
-    jump:    { src: 'assets/characters/bezos/jacked_jeff_jump.png',   cols: 25, frameW: 382, frameH: 216 },
-    kick:    { src: 'assets/characters/bezos/jacked_jeff_kick.png',   cols: 25, frameW: 382, frameH: 216 },
-    idle:    { src: 'assets/characters/bezos/jacked_jeff_idle.png',   cols: 25, frameW: 382, frameH: 216 },
+    ko:      { src: 'assets/characters/bezos/jacked_jeff_kofinal.webp', cols: 25, frameW: 382, frameH: 216, cropX: 0, cropW: 382 },
+    recoil:  { src: 'assets/characters/bezos/jacked_jeff_recoil.webp', cols: 25, frameW: 382, frameH: 216 },
+    crouch:  { src: 'assets/characters/bezos/jacked_jeff_crouch2.webp', cols: 25, frameW: 382, frameH: 216 },
+    jump:    { src: 'assets/characters/bezos/jacked_jeff_jump.webp',   cols: 25, frameW: 382, frameH: 216 },
+    kick:    { src: 'assets/characters/bezos/jacked_jeff_kick.webp',   cols: 25, frameW: 382, frameH: 216 },
+    idle:    { src: 'assets/characters/bezos/jacked_jeff_idle.webp',   cols: 25, frameW: 382, frameH: 216 },
   },
   projectile: {
     srcs: [

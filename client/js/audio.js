@@ -46,11 +46,14 @@ function preloadAudio(src) {
 
 export function playMusic(src, volume = 0.4) {
   if (currentTrack === src) return; // already playing
-  if (musicEl) { musicEl.pause(); musicEl.src = ''; }
+  if (musicEl) { musicEl.pause(); }
   // Reuse preloaded element if available (skip creating new one)
-  musicEl = preloadedAudio[src] || new Audio(src);
-  // Restore src for preloaded elements (in case it was cleared)
-  if (preloadedAudio[src] && !musicEl.src) { musicEl.src = src; }
+  if (preloadedAudio[src]) {
+    musicEl = preloadedAudio[src];
+    musicEl.src = src; // ensure src is set
+  } else {
+    musicEl = new Audio(src);
+  }
   musicEl.loop   = true;
   musicEl.volume = volume;
   musicBaseVol   = volume;
@@ -77,7 +80,7 @@ function preloadFightSong(src) {
   // Use Image object to preload (browser caches it for playMusic to use)
   const link = document.createElement('link');
   link.rel = 'preload';
-  link.as = 'audio';
+  link.as = 'fetch';
   link.href = src;
   document.head.appendChild(link);
 }
