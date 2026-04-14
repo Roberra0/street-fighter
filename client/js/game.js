@@ -229,7 +229,7 @@ let assetsReady = false;
 
   // --- Tier 0: Rage_Logo alone (needed for loading screen) ---
   const preloadStart = performance.now();
-  const logo = await loadImage('assets/screens/Rage_Logo.webp');
+  const logo = await loadImage('assets/screens/rage_against_gpt.webp');
   setRageLogo(logo);
 
   // --- Tier 1: splash strips + intro music + mugshots/portraits (all in parallel) ---

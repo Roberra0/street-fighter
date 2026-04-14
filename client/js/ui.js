@@ -84,13 +84,13 @@ export function drawLoading(ctx, progress, renderTime) {
 
   // ---- Rage Logo at top ----
   if (rageLogo && rageLogo.complete && rageLogo.naturalWidth > 0) {
-    const maxLogoW = GW * 0.60;
-    const maxLogoH = GH * 0.28;
+    const maxLogoW = GW * 0.85;
+    const maxLogoH = GH * 0.45;
     const scale = Math.min(maxLogoW / rageLogo.naturalWidth, maxLogoH / rageLogo.naturalHeight);
     const dw = rageLogo.naturalWidth * scale;
     const dh = rageLogo.naturalHeight * scale;
     const dx = (GW - dw) / 2;
-    const dy = 30;
+    const dy = 10;
     ctx.imageSmoothingEnabled = true;
     ctx.drawImage(rageLogo, dx, dy, dw, dh);
   }
@@ -473,8 +473,8 @@ export function drawTitle(ctx, drawBG, renderTime) {
 
   // ── Rage Logo ─────────────────────────────────────────────────────────────────
   if (rageLogo.complete && rageLogo.naturalWidth > 0) {
-    const maxLogoW = GW * 0.55;
-    const maxLogoH = GH * 0.25;
+    const maxLogoW = GW * 0.86;
+    const maxLogoH = GH * 0.44;
     const scale = Math.min(maxLogoW / rageLogo.naturalWidth, maxLogoH / rageLogo.naturalHeight);
     const dw = rageLogo.naturalWidth * scale;
     const dh = rageLogo.naturalHeight * scale;
@@ -488,7 +488,7 @@ export function drawTitle(ctx, drawBG, renderTime) {
   ctx.textAlign = 'center';
   titleBlink += 0.04;
   MENU_ITEMS.forEach((label, i) => {
-    const y = 145 + i * 26;
+    const y = 195 + i * 26;
     const selected = i === menuIndex;
     const disabled = DISABLED_ITEMS.has(i);
     if (disabled) {
@@ -519,7 +519,7 @@ export function drawTitle(ctx, drawBG, renderTime) {
 
   const scoresHighlighted = menuIndex === MENU_ITEMS.length; // SEE MORE virtual slot
 
-  const panelTop = 210;
+  const panelTop = 290;
   ctx.fillStyle = scoresHighlighted ? '#221800' : '#111';
   ctx.fillRect(GW / 2 - 120, panelTop, 240, 1);
 
