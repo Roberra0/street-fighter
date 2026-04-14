@@ -2,11 +2,11 @@
 
 import { Fighter, CHARACTERS } from './fighter.js';
 import * as input    from './input.js';
-import { canvas, ctx, drawBG, setActiveBG, drawShadow, drawFighterPlaceholder, drawProjectiles, drawOverlays, loadSpriteSheet, loadSpriteSheetAsync, applyScreenShake, updateCamera, getCameraX, getStageWidth, getOverscanX } from './renderer.js';
+import { canvas, ctx, drawBG, setActiveBG, drawShadow, drawFighterPlaceholder, drawProjectiles, drawOverlays, loadSpriteSheet, loadSpriteSheetAsync, getDefLoadProgress, applyScreenShake, updateCamera, getCameraX, getStageWidth, getOverscanX } from './renderer.js';
 import { pushApart, resolveHits, clampToWalls } from './collision.js';
 import * as audio    from './audio.js';
 import { spawnBlockSpark, updateParticles, drawParticles, clearParticles } from './particles.js';
-import { drawHUD, drawMessage, drawTitle, drawCharSelect, drawMapSelect, drawPauseOverlay, drawControlsOverlay, drawHighScore, drawViewScores, drawLoading, drawSplash, getTitleMenuIndex, menuUp, menuDown, resetTitleMenu } from './ui.js';
+import { drawHUD, drawMessage, drawTitle, drawCharSelect, drawMapSelect, drawPauseOverlay, drawControlsOverlay, drawHighScore, drawViewScores, drawLoading, drawPreFightLoading, drawSplash, getTitleMenuIndex, menuUp, menuDown, resetTitleMenu, setRageLogo, setVsImage, CHAR_DEFS, loadCharSelectAssets } from './ui.js';
 import { cpuSnapshot, getCpuDifficulty, setCpuDifficulty, resetCpuState } from './cpu.js';
 
 // ---- Constants ----
@@ -62,13 +62,24 @@ let charSelectDelay = 0; // ticks to wait after both confirmed before map screen
 
 // ---- Map definitions ----
 const MAP_DEFS = [
-  { id: 'sf',     name: 'SAN FRANCISCO', src: 'assets/maps/sf_wides.png',      city: { fx: 0.104, fy: 0.425 }, thumbName: 'GOLDEN GATE' },
-  { id: 'venice', name: 'VENICE',        src: 'assets/maps/venice_wides.png',  city: { fx: 0.160, fy: 0.624 }, cityName: 'LOS ANGELES', labelBelow: true },
-  { id: 'bk',     name: 'BROOKLYN',      src: 'assets/maps/bk_wides.png',      city: { fx: 0.840, fy: 0.394 }, thumbName: 'BROOKLYN BRIDGE' },
-  { id: 'philly', name: 'PHILLY',        src: 'assets/maps/philly_wide.png',   city: { fx: 0.815, fy: 0.415 }, thumbName: 'INDEPENDENCE HALL' },
-  { id: 'dc',     name: 'WASHINGTON DC', src: 'assets/maps/DC_wides.png',      city: { fx: 0.802, fy: 0.477 }, labelBelow: true, thumbName: 'WHITE HOUSE' },
+  { id: 'sf',     name: 'SAN FRANCISCO', src: 'assets/maps/sf_wides.webp',      city: { fx: 0.104, fy: 0.425 }, thumbName: 'GOLDEN GATE' },
+  { id: 'venice', name: 'VENICE',        src: 'assets/maps/venice_wides.webp',  city: { fx: 0.160, fy: 0.624 }, cityName: 'LOS ANGELES', labelBelow: true },
+  { id: 'bk',     name: 'BROOKLYN',      src: 'assets/maps/bk_wides.webp',      city: { fx: 0.840, fy: 0.394 }, thumbName: 'BROOKLYN BRIDGE' },
+  { id: 'philly', name: 'PHILLY',        src: 'assets/maps/philly_wide.webp',   city: { fx: 0.815, fy: 0.415 }, thumbName: 'INDEPENDENCE HALL' },
+  { id: 'dc',     name: 'WASHINGTON DC', src: 'assets/maps/DC_wides.webp',      city: { fx: 0.802, fy: 0.477 }, labelBelow: true, thumbName: 'WHITE HOUSE' },
 ];
-MAP_DEFS.forEach(m => { const img = new Image(); img.src = m.src; m._img = img; });
+
+// Maps are lazy-loaded when mapSelect state is entered (see line ~875)
+
+// ---- Background image preloader ----
+function preloadImage(src) {
+  const link = document.createElement('link');
+  link.rel = 'preload';
+  link.as = 'image';
+  link.href = src;
+  link.crossOrigin = 'anonymous';
+  document.head.appendChild(link);
+}
 
 // ---- Map select state ----
 let mapSelIdx    = 0;
@@ -78,13 +89,14 @@ let mapConfirmed = false; // true while waiting for 2s laugh delay before fight
 let menuNavCooldown = 0;
 const MENU_NAV_DELAY = 7; // ~117ms between steps
 
-// ---- Tesla sprite preload ----
-const teslaImg = new Image();
-teslaImg.src = 'assets/characters/musk/tesla_sprite.png';
+// ---- Tesla sprite (lazy-loaded when musk is selected) ----
+let teslaImg = null;
 
-// ---- Zuck influencer mob sprite preload ----
-const zuckMobImg = new Image();
-zuckMobImg.src = 'assets/characters/zuck/influencer_mob.png';
+// ---- Zuck influencer mob sprite (lazy-loaded when zuck is selected) ----
+let zuckMobImg = null;
+
+// ---- Altman KO sprite (lazy-loaded when altman is selected) ----
+let altmanKoImg = null;
 
 // ---- Score (1P mode) ----
 let p1Score = 0;
@@ -117,11 +129,11 @@ function prevHsChar(c) { const i = HS_CHARS.indexOf(c); return HS_CHARS[(i - 1 +
 
 // ---- Splash intro state ----
 const SPLASH_PATHS = [
-  'assets/screens/splash_intro/strip_1.png',
-  'assets/screens/splash_intro/Strip_2.png',
-  'assets/screens/splash_intro/Strip_3.png',
+  'assets/screens/splash_intro/strip_1.webp',
+  'assets/screens/splash_intro/Strip_2.webp',
+  'assets/screens/splash_intro/Strip_3.webp',
 ];
-const splashImgs = SPLASH_PATHS.map(src => { const img = new Image(); img.src = src; return img; });
+const splashImgs = SPLASH_PATHS.map(() => new Image());
 let splashIdx = 0;
 let splashStartTime = 0; // rAF timestamp when current strip started
 let splashManual = false; // true once user uses arrow keys — disables auto-advance
@@ -170,40 +182,8 @@ const loadProgress = { loaded: 0, total: 0, files: [], recentFiles: [], ready: f
 let assetsReady = false;
 
 (async () => {
-  const ALL_IMAGE_PATHS = [
-    // PRIORITY: Loading screen logo (load first so it appears immediately)
-    'assets/screens/Rage_Logo.png',
-    // Maps
-    ...MAP_DEFS.map(m => m.src),
-    // Special sprites
-    'assets/characters/musk/tesla_sprite.png',
-    'assets/characters/zuck/influencer_mob.png',
-    // Screen images (loaded by ui.js)
-    'assets/screens/vs.png',
-    'assets/screens/map.png',
-    // Splash intro strips
-    ...SPLASH_PATHS,
-    // Audio: intro only. Other songs preload-while-playing (see audio.js strategy)
-    'assets/audio/music/intro.mp3',
-    // Char select mugs + portraits (loaded by ui.js CHAR_DEFS)
-    'assets/characters/sam_altman/altman_mug.png',      'assets/characters/sam_altman/altman_fullbody.png',
-    'assets/characters/zuck/zuck_mug.png',              'assets/characters/zuck/zuck_fullbody.png',
-    'assets/characters/bezos/jacked_jeff_mug.png','assets/characters/bezos/jacked_jeff_fullbody.png',
-    'assets/characters/jensen/jensen_mug.png',          'assets/characters/jensen/jensen_fullbody.png',
-    'assets/characters/musk/elon_mugshot.png',          'assets/characters/musk/elon_fullbody.png',
-    'assets/characters/young_bezos/skinny_jeff_mug.png','assets/characters/young_bezos/skinny_jeff_fullbody.png',
-    'assets/characters/rio/laker_mug.png',            'assets/characters/rio/laker_fullbody.png',
-    'assets/characters/zuri/kickboxer_mug.png','assets/characters/zuri/kickboxer_fullbody.png',
-    'assets/characters/dre/dread_mug.png',            'assets/characters/dre/dread_fullbody.png',
-    'assets/characters/sid/skater_mug.png',          'assets/characters/sid/skater_fullbody.png',
-    'assets/characters/jax/tech_mug.png',          'assets/characters/jax/tech_fullbody.png',
-    // Character sprite sheets lazy-loaded on selection (see charSelect state)
-  ];
-
-  // Set total file count (progress tracked by file count, not bytes)
-  loadProgress.total = ALL_IMAGE_PATHS.length;
-
   // Load each image and wait for onload. Track file count progress.
+  // Returns the loaded Image object so we can store it in character defs
   function loadImage(path) {
     return new Promise((resolve) => {
       const entry = { name: path.split('/').pop(), path, size: 0, done: false, startTime: performance.now() };
@@ -225,7 +205,7 @@ let assetsReady = false;
         loadProgress.recentFiles.push(entry.name);
         if (loadProgress.recentFiles.length > 3) loadProgress.recentFiles.shift();
         console.log(`[preload] ${entry.name} loaded in ${entry.loadTime.toFixed(0)}ms (${(entry.size/1048576).toFixed(1)}MB)`);
-        resolve();
+        resolve(img);
       };
 
       img.onerror = () => {
@@ -236,7 +216,7 @@ let assetsReady = false;
         loadProgress.recentFiles.push(entry.name);
         if (loadProgress.recentFiles.length > 3) loadProgress.recentFiles.shift();
         console.warn(`[preload] ${entry.name} failed after ${entry.loadTime.toFixed(0)}ms`);
-        resolve();
+        resolve(img);
       };
 
       // Start loading
@@ -244,11 +224,83 @@ let assetsReady = false;
     });
   }
 
-  // Load images in parallel
+  // --- Tier 0: Rage_Logo alone (needed for loading screen) ---
   const preloadStart = performance.now();
-  await Promise.all(ALL_IMAGE_PATHS.map(loadImage));
+  const logo = await loadImage('assets/screens/Rage_Logo.webp');
+  setRageLogo(logo);
+
+  // --- Tier 1: splash strips + intro music + mugshots/portraits (all in parallel) ---
+  const mugPortraitPaths = CHAR_DEFS.map(ch => {
+    const paths = [];
+    if (ch.mug) paths.push(ch.mug);
+    if (ch.portrait) paths.push(ch.portrait);
+    return paths;
+  }).flat();
+
+  // Preload splash strips as tracked images
+  const splashStripPaths = SPLASH_PATHS;
+
+  // Preload intro music as audio element (resolves when canplaythrough fires)
+  const introMusicSrc = 'assets/audio/music/Rage_main_intro.mp4';
+  const introMusicReady = new Promise((resolve) => {
+    const a = new Audio();
+    a.preload = 'auto';
+    a.src = introMusicSrc;
+    const entry = { name: introMusicSrc.split('/').pop(), path: introMusicSrc, size: 0, done: false, startTime: performance.now() };
+    loadProgress.files.push(entry);
+    a.addEventListener('canplaythrough', () => {
+      if (entry.done) return;
+      entry.done = true;
+      entry.loadTime = performance.now() - entry.startTime;
+      loadProgress.loaded++;
+      loadProgress.recentFiles.push(entry.name);
+      if (loadProgress.recentFiles.length > 3) loadProgress.recentFiles.shift();
+      console.log(`[preload] ${entry.name} loaded in ${entry.loadTime.toFixed(0)}ms`);
+      audio.registerPreloadedAudio(introMusicSrc, a); // register for reuse
+      resolve();
+    }, { once: true });
+    a.addEventListener('error', () => {
+      if (entry.done) return;
+      entry.done = true;
+      entry.loadTime = performance.now() - entry.startTime;
+      loadProgress.loaded++;
+      console.warn(`[preload] ${entry.name} failed after ${entry.loadTime.toFixed(0)}ms`);
+      resolve();
+    }, { once: true });
+  });
+
+  loadProgress.total = 1 + mugPortraitPaths.length + splashStripPaths.length + 1 + 1; // logo + mugs/portraits + strips + intro music + vs
+
+  // Load splash strip images into the splashImgs array so they're ready for drawSplash
+  const splashLoads = splashStripPaths.map((src, i) => {
+    return loadImage(src).then(img => { splashImgs[i] = img; });
+  });
+
+  const vsLoad = loadImage('assets/screens/vs.webp');
+
+  const [mugPortraitImgs, , , vsImg] = await Promise.all([
+    Promise.all(mugPortraitPaths.map(loadImage)),
+    Promise.all(splashLoads),
+    introMusicReady,
+    vsLoad,
+  ]);
+  setVsImage(vsImg);
   const preloadEnd = performance.now();
-  console.log(`[preload] All images loaded in ${(preloadEnd - preloadStart).toFixed(0)}ms`);
+  console.log(`[preload] All assets loaded in ${(preloadEnd - preloadStart).toFixed(0)}ms`);
+
+  // Store loaded mug/portrait images in CHAR_DEFS
+  let imgIdx = 0;
+  CHAR_DEFS.forEach(ch => {
+    if (ch.mug) {
+      ch._mug = mugPortraitImgs[imgIdx];
+      imgIdx++;
+    }
+    if (ch.portrait) {
+      ch._portrait = mugPortraitImgs[imgIdx];
+      imgIdx++;
+    }
+  });
+
   loadProgress.files.sort((a, b) => b.size - a.size);
   loadProgress.ready = true;
   assetsReady = true;
@@ -334,6 +386,8 @@ function tick(inputOverrides = null) {
     return;
   }
 
+  if (gameState === 'preFight' || gameState === 'preFightWait') return;
+
   if (gameState === 'intro') {
     // Buffer inputs during countdown so presses before FIGHT! aren't lost
     p1.feedInputBuffer(i1);
@@ -388,7 +442,7 @@ function tick(inputOverrides = null) {
     if (zuckMobOverlay) {
       zuckMobOverlay.mobTicks++;
       if (zuckMobOverlay.mobTicks % 60 === 0) {
-        const mobEvents = zuckMobOverlay.target.receiveDamage(5, 1.5, zuckMobOverlay.attacker, false);
+        const mobEvents = zuckMobOverlay.target.receiveDamage(10, 1.5, zuckMobOverlay.attacker, false);
         processEvents(mobEvents);
       }
     }
@@ -490,16 +544,22 @@ function updateProjectiles() {
       const target = proj.ownerId === 0 ? p2 : p1;
       const hw = target.def.hurtboxW / 2;
       const hh = target.def.hurtboxH;
+      if (proj.img?.src?.includes('tesla')) {
+        console.log('[tesla collision] proj:', {x: proj.x, y: proj.y}, 'target:', {x: target.x, y: target.y, hw, hh}, 'check:', proj.x > target.x - hw && proj.x < target.x + hw && proj.y > target.y - hh && proj.y < target.y);
+      }
       if (proj.x > target.x - hw && proj.x < target.x + hw &&
           proj.y > target.y - hh && proj.y < target.y) {
         const events = target.receiveDamage(proj.damage, proj.knockback, proj.owner, false);
         processEvents(events);
         proj.hasHit = true;
+        console.log('[tesla HIT!] damage:', proj.damage);
       }
     }
   }
   projectiles = projectiles.filter(p => p.active);
 }
+
+let bgLoadStarted = false;
 
 // ---- Round management ----
 function startRound() {
@@ -519,6 +579,16 @@ function startRound() {
   zuckMobOverlay = null;
   finishHimFired = false;
   audio.playFightMusic();
+
+  // Background-load remaining character sprites (staggered, once per session)
+  if (!bgLoadStarted) {
+    bgLoadStarted = true;
+    const selectedIds = new Set([p1.def.id, p2.def.id]);
+    const remaining = Object.keys(CHARACTERS).filter(id => !selectedIds.has(id));
+    remaining.forEach((id, i) => {
+      setTimeout(() => loadSpriteSheet(CHARACTERS[id]), 3000 + i * 500);
+    });
+  }
 }
 
 function startMatch() {
@@ -623,27 +693,30 @@ function processEvents(events) {
         const target = ev.attackerId === 0 ? p2 : p1;
         zuckMobOverlay = { startTime: null, target, attacker, mobTicks: 0 };
       }
-      if (attacker.def.id === 'musk' && !projectiles.some(p => p.img === teslaImg)) {
-        projectiles.push({
-          x: -110,
-          y: GROUND - 20,
-          vx: 9,
-          vy: 0,
-          img: teslaImg,
-          frameW: 1280, frameH: 720, cols: 1,
-          frameCropX: 155, frameCropW: 975,
-          w: 316, h: 234,
-          damage: 20,
-          knockback: 5.0,
-          angle: 0,
-          angleSpeed: 0,
-          gravity: 0,
-          startX: -110,
-          maxRange: 1200,
-          owner: attacker,
-          ownerId: ev.attackerId,
-          active: true,
-        });
+      if (attacker.def.id === 'musk') {
+        const hasExisting = projectiles.some(p => p.img === teslaImg);
+        if (!hasExisting) {
+          projectiles.push({
+            x: 0,
+            y: GROUND - 20,
+            vx: 9,
+            vy: 0,
+            img: teslaImg,
+            frameW: 1280, frameH: 720, cols: 2,
+            frameCropX: 155, frameCropW: 975,
+            w: 316, h: 234,
+            damage: 40,
+            knockback: 5.0,
+            angle: 0,
+            angleSpeed: 0,
+            gravity: 0,
+            startX: 0,
+            maxRange: 950,
+            owner: attacker,
+            ownerId: ev.attackerId,
+            active: true,
+          });
+        }
       }
     }
   }
@@ -651,11 +724,11 @@ function processEvents(events) {
 
 // ---- Zuck influencer mob overlay ----
 // 25-frame strip (1792×720 each), spread evenly across 3s in front of the opponent.
-const ZUCK_MOB_COLS      = 25;
-const ZUCK_MOB_FRAMEW    = 896;  // halved from 1792 (image compressed to 50%)
-const ZUCK_MOB_FRAMEH    = 360;  // halved from 720 (image compressed to 50%)
+const ZUCK_MOB_COLS      = 3;
+const ZUCK_MOB_FRAMEW    = 1280;
+const ZUCK_MOB_FRAMEH    = 720;
 const ZUCK_MOB_DURATION  = 3000; // ms total
-const ZUCK_MOB_CROP_LEFT = 3;    // strip left pixels to hide black edge line
+const ZUCK_MOB_CROP_LEFT = 0;    // no crop needed with new sprite
 const ZUCK_MOB_W         = 560;  // display width on canvas
 const ZUCK_MOB_H         = Math.round(ZUCK_MOB_W * (ZUCK_MOB_FRAMEH / ZUCK_MOB_FRAMEW));
 const ZUCK_MOB_FADE_W    = 48;   // edge fade width in display pixels
@@ -670,12 +743,12 @@ function drawZuckMob(renderTime) {
   const elapsed = renderTime - zuckMobOverlay.startTime;
   if (elapsed >= ZUCK_MOB_DURATION) { zuckMobOverlay = null; return; }
 
-  // Spread all 25 frames evenly across the full 3s; hold last frame at the end
-  const frame = Math.min(Math.floor(elapsed / (ZUCK_MOB_DURATION / ZUCK_MOB_COLS)), ZUCK_MOB_COLS - 1);
+  // Play 8x faster: cycle through all frames 8 times in 3s
+  const frame = Math.floor((elapsed * 8) / (ZUCK_MOB_DURATION / ZUCK_MOB_COLS)) % ZUCK_MOB_COLS;
 
   const target = zuckMobOverlay.target;
   const dx = Math.round(target.x - getCameraX() - ZUCK_MOB_W / 2);
-  const dy = Math.round(GROUND - ZUCK_MOB_H);
+  const dy = Math.round(GROUND - ZUCK_MOB_H) + 35;
 
   // Draw frame (with left crop) into an offscreen canvas, then fade edges
   if (!_zuckMobOffscreen) {
@@ -745,6 +818,15 @@ function render(renderTime) {
     ctx.restore();
     if (assetsReady && input.isAnyKey()) {
       audio.initAudio();
+      loadCharSelectAssets(); // preload map.webp while user watches splash
+      // Preload map backgrounds so they're cached by mapSelect
+      MAP_DEFS.forEach(m => {
+        if (!m._img) { const img = new Image(); img.src = m.src; m._img = img; }
+      });
+      // Preload character overlay images in background
+      preloadImage('assets/characters/musk/tesla_abbrv.png');
+      preloadImage('assets/characters/zuck/influencer_abbrv.png');
+      preloadImage('assets/characters/sam_altman/altman_block2_sprites_20frame.png');
       splashIdx = 0;
       splashStartTime = renderTime;
       splashManual = false;
@@ -873,20 +955,19 @@ function render(renderTime) {
       if (menuNavCooldown === 0 && input.isMenuDown())  { p2SelIdx = csGridNav(p2SelIdx, 'down');  menuNavCooldown = MENU_NAV_DELAY; audio.sfxScroll(); }
       if (input.isMenuConfirm()) { p2SelIdx = resolveRandom(p2SelIdx); p2Confirmed = true; audio.sfxConfirmation(); }
     }
-    // Once both confirmed → lazy load their sprites, then go to map select
+    // Once both confirmed → start loading sprites (non-blocking), go to map select
     if (p1Confirmed && p2Confirmed) {
       if (charSelectDelay === 0) {
-        charSelectDelay = -1; // Sentinel: loading in progress
+        charSelectDelay = -1;
         const d1 = CHARACTERS[CHAR_IDS[p1SelIdx]];
         const d2 = CHARACTERS[CHAR_IDS[p2SelIdx]];
-        Promise.all([loadSpriteSheetAsync(d1), loadSpriteSheetAsync(d2)]).then(() => {
-          mapSelIdx       = 0;
-          gameState       = 'mapSelect';
-          menuNavCooldown = MENU_NAV_DELAY;
-          input.clearFrame();
-        });
+        loadSpriteSheetAsync(d1);  // fire-and-forget, pre-fight gate catches completion
+        loadSpriteSheetAsync(d2);
+        mapSelIdx       = 0;
+        gameState       = 'mapSelect';
+        menuNavCooldown = MENU_NAV_DELAY;
+        input.clearFrame();
       }
-      // charSelectDelay === -1: sprites loading, keep drawing charSelect screen
     }
     ctx.save(); ctx.translate(osX, 0);
     drawCharSelect(ctx, drawBG, renderTime, {
@@ -897,6 +978,10 @@ function render(renderTime) {
   }
 
   if (gameState === 'mapSelect') {
+    // Lazy-load all maps on first entry to mapSelect (only happens once per charSelect session)
+    if (MAP_DEFS[0]._img === undefined) {
+      MAP_DEFS.forEach(m => { const img = new Image(); img.src = m.src; m._img = img; });
+    }
     if (menuNavCooldown > 0) menuNavCooldown--;
     // ESC: back to char select (reset confirms so both players re-pick)
     if (!mapConfirmed && input.isEscapeKey()) {
@@ -923,6 +1008,18 @@ function render(renderTime) {
       setActiveBG(MAP_DEFS[mapSelIdx]._img);
       const d1 = CHARACTERS[CHAR_IDS[p1SelIdx]];
       const d2 = CHARACTERS[CHAR_IDS[p2SelIdx]];
+      // Lazy-load musk's tesla sprite only if musk is selected
+      if (d1.id === 'musk' || d2.id === 'musk') {
+        if (!teslaImg) { teslaImg = new Image(); teslaImg.src = 'assets/characters/musk/tesla_abbrv.png'; }
+      }
+      // Lazy-load zuck's mob sprite only if zuck is selected
+      if (d1.id === 'zuck' || d2.id === 'zuck') {
+        if (!zuckMobImg) { zuckMobImg = new Image(); zuckMobImg.src = 'assets/characters/zuck/influencer_abbrv.png'; }
+      }
+      // Lazy-load altman's KO sprite only if altman is selected
+      if (d1.id === 'altman' || d2.id === 'altman') {
+        if (!altmanKoImg) { altmanKoImg = new Image(); altmanKoImg.src = 'assets/characters/sam_altman/altman_ko.png'; }
+      }
       const sw = getStageWidth();
       p1 = new Fighter({ ...d1, startX: Math.round(sw / 2 - 100), facing:  1 }, 0);
       p2 = new Fighter({ ...d2, startX: Math.round(sw / 2 + 100), facing: -1 }, 1);
@@ -931,10 +1028,57 @@ function render(renderTime) {
       roundNum = 1;
       p1Score  = 0;
       input.clearFrame();
-      audio.sfxLaughWithDelay(() => { mapConfirmed = false; startRound(); }, 1000);
+      gameState = 'preFight';
     }
     ctx.save(); ctx.translate(osX, 0);
     drawMapSelect(ctx, renderTime, { mapSelIdx, maps: MAP_DEFS });
+    ctx.restore();
+    return;
+  }
+
+  // Pre-fight loading gate — wait for sprites/map/extras before starting fight
+  if (gameState === 'preFight') {
+    const d1p = getDefLoadProgress(p1.def);
+    const d2p = getDefLoadProgress(p2.def);
+    const mapImg = MAP_DEFS[mapSelIdx]._img;
+    const mapReady = mapImg && mapImg.complete && mapImg.naturalWidth > 0;
+
+    let extrasTotal = 0, extrasLoaded = 0;
+    if (teslaImg && (p1.def.id === 'musk' || p2.def.id === 'musk')) {
+      extrasTotal++;
+      if (teslaImg.complete && teslaImg.naturalWidth > 0) extrasLoaded++;
+    }
+    if (zuckMobImg && (p1.def.id === 'zuck' || p2.def.id === 'zuck')) {
+      extrasTotal++;
+      if (zuckMobImg.complete && zuckMobImg.naturalWidth > 0) extrasLoaded++;
+    }
+
+    const totalAssets = d1p.total + d2p.total + 1 + extrasTotal;
+    const loadedAssets = d1p.loaded + d2p.loaded + (mapReady ? 1 : 0) + extrasLoaded;
+    const allReady = loadedAssets >= totalAssets;
+
+    ctx.save(); ctx.translate(osX, 0);
+    drawBG();
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
+    ctx.fillRect(0, 0, 640, 360);
+    drawPreFightLoading(ctx, { loaded: loadedAssets, total: totalAssets, ready: allReady });
+    ctx.restore();
+
+    if (allReady) {
+      mapConfirmed = false;
+      audio.sfxLaughWithDelay(() => { startRound(); }, 1000);
+      gameState = 'preFightWait';
+    }
+    return;
+  }
+
+  // Waiting for laugh SFX before round starts
+  if (gameState === 'preFightWait') {
+    ctx.save(); ctx.translate(osX, 0);
+    drawBG();
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
+    ctx.fillRect(0, 0, 640, 360);
+    drawPreFightLoading(ctx, { loaded: 1, total: 1, ready: true });
     ctx.restore();
     return;
   }
@@ -1076,7 +1220,7 @@ function render(renderTime) {
     }
     if (input.isMenuConfirm()) {
       if (pauseMenuIndex === 0) paused = false; // Resume
-      if (pauseMenuIndex === maxIdx) { paused = false; setActiveBG(null); audio.playMusic('assets/audio/music/Rage_main_intro.mp4'); resetTitleMenu(); gameState = 'title'; } // Quit
+      if (pauseMenuIndex === maxIdx) { paused = false; setActiveBG(null); audio.playMusic('assets/audio/music/Rage_main_intro.mp4'); resetTitleMenu(); bgLoadStarted = false; gameState = 'title'; } // Quit
     }
     if (input.isEscapeKey()) { paused = false; }
     drawPauseOverlay(ctx, { pauseMenuIndex, difficulty: getCpuDifficulty(), practiceMode });

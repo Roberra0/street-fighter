@@ -7,6 +7,7 @@ const buffers = {};
 let musicEl      = null;
 let currentTrack = null;
 let musicBaseVol = 0.4; // intended volume — tracked so duckMusic can restore correctly
+const preloadedAudio = {}; // maps src → preloaded Audio element
 
 // Fight songs: lazy-loaded (not preloaded with game assets)
 const FIGHT_SONGS = [
@@ -28,6 +29,11 @@ const MENU_SONGS = [
   'assets/audio/music/Rage_song3.mp4',
 ];
 
+// Register a preloaded Audio element so playMusic() can reuse it
+export function registerPreloadedAudio(src, audioEl) {
+  preloadedAudio[src] = audioEl;
+}
+
 // Preload audio in background using link preload
 function preloadAudio(src) {
   const link = document.createElement('link');
@@ -41,7 +47,10 @@ function preloadAudio(src) {
 export function playMusic(src, volume = 0.4) {
   if (currentTrack === src) return; // already playing
   if (musicEl) { musicEl.pause(); musicEl.src = ''; }
-  musicEl = new Audio(src);
+  // Reuse preloaded element if available (skip creating new one)
+  musicEl = preloadedAudio[src] || new Audio(src);
+  // Restore src for preloaded elements (in case it was cleared)
+  if (preloadedAudio[src] && !musicEl.src) { musicEl.src = src; }
   musicEl.loop   = true;
   musicEl.volume = volume;
   musicBaseVol   = volume;
@@ -88,13 +97,13 @@ export function stopMusic() {
 }
 
 const SOUND_FILES = {
-  confirmation:     'assets/audio/sfx/confirmation.wav',
-  scroll:           'assets/audio/sfx/scroll.wav',
-  punch_swing:      'assets/audio/sfx/punch_swing.wav',
-  kick_swing:       'assets/audio/sfx/punch_swing.wav',
-  punch_hit:        'assets/audio/sfx/punch_hit.wav',
-  kick_hit:         'assets/audio/sfx/kick_hit.wav',
-  ko_thud:          'assets/audio/sfx/ko_thud.wav',
+  confirmation:     'assets/audio/sfx/confirmation.mp3',
+  scroll:           'assets/audio/sfx/scroll.mp3',
+  punch_swing:      'assets/audio/sfx/punch_swing.mp3',
+  kick_swing:       'assets/audio/sfx/punch_swing.mp3',
+  punch_hit:        'assets/audio/sfx/punch_hit.mp3',
+  kick_hit:         'assets/audio/sfx/kick_hit.mp3',
+  ko_thud:          'assets/audio/sfx/ko_thud.mp3',
   round_1_fight:    'assets/audio/voice/announcer/Round 1 Fight.mp3',
   round_2_fight:    'assets/audio/voice/announcer/Round 2 Fight.mp3',
   final_round:      'assets/audio/voice/announcer/Final round.mp3',
@@ -105,37 +114,35 @@ const SOUND_FILES = {
   finish_him:       'assets/audio/voice/announcer/finish him.mp3',
   test_luck:        'assets/audio/voice/announcer/Test Luck.mp3',
   laugh:            'assets/audio/voice/announcer/laugh.mp3',
-  female_ko:        'assets/audio/voice/fighters/female_ko.wav',
-  female_jump:      'assets/audio/voice/fighters/female_jump.wav',
-  female_crouch:    'assets/audio/voice/fighters/female_crouch.wav',
+  female_ko:        'assets/audio/voice/fighters/female_ko.mp3',
+  female_jump:      'assets/audio/voice/fighters/female_jump.mp3',
+  female_crouch:    'assets/audio/voice/fighters/female_crouch.mp3',
 };
 
 // Voice sets for male fighters — loaded dynamically
 const VOICE_SETS = ['set_big', 'set_med', 'set_smaller', 'set_1', 'set_2'];
 const VOICE_ACTIONS = ['attack', 'crouch', 'dead', 'jump', 'recoil'];
 
+async function loadBuffer(key, path) {
+  try {
+    const res = await fetch(path);
+    const arr = await res.arrayBuffer();
+    buffers[key] = await audioCtx.decodeAudioData(arr);
+  } catch (e) {}
+}
+
 async function loadVoiceSets() {
+  const jobs = [];
   for (const set of VOICE_SETS) {
     for (const action of VOICE_ACTIONS) {
-      const key  = `${set}_${action}`;
-      const path = `assets/audio/voice/sets/${set}/${action}.wav`;
-      try {
-        const res = await fetch(path);
-        const arr = await res.arrayBuffer();
-        buffers[key] = await audioCtx.decodeAudioData(arr);
-      } catch (e) {}
+      jobs.push(loadBuffer(`${set}_${action}`, `assets/audio/voice/sets/${set}/${action}.mp3`));
     }
   }
+  await Promise.all(jobs);
 }
 
 async function loadSounds() {
-  for (const [key, path] of Object.entries(SOUND_FILES)) {
-    try {
-      const res = await fetch(path);
-      const arr = await res.arrayBuffer();
-      buffers[key] = await audioCtx.decodeAudioData(arr);
-    } catch (e) {}
-  }
+  await Promise.all(Object.entries(SOUND_FILES).map(([key, path]) => loadBuffer(key, path)));
 }
 
 export function initAudio() {
@@ -200,7 +207,7 @@ function playVoice(voiceSet, action, vol) {
     playBuffer(`female_${action === 'dead' ? 'ko' : action}`, vol);
   } else {
     const key  = `${voiceSet}_${action}`;
-    const path = `assets/audio/voice/sets/${voiceSet}/${action}.wav`;
+    const path = `assets/audio/voice/sets/${voiceSet}/${action}.mp3`;
     if (!audioCtx) return;
     console.log(`[audio] ${key}`);
     if (!buffers[key]) {

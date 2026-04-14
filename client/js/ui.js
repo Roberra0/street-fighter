@@ -8,17 +8,11 @@ export const BUILD = '2026-03-24 22:29 PST v8';
 // titleBlink is render-side state — lives in ui.js module scope
 let titleBlink = 0;
 
-// Preload the Rage logo for the loading screen
-// Load Rage logo immediately (before game preload system) for early display on loading screen
-const rageLogo = new Image();
-rageLogo.src = 'assets/screens/Rage_Logo.png';
-// Preload link to ensure it loads with high priority
-const rageLogoPreload = document.createElement('link');
-rageLogoPreload.rel = 'preload';
-rageLogoPreload.as = 'image';
-rageLogoPreload.href = 'assets/screens/Rage_Logo.png';
-rageLogoPreload.crossOrigin = 'anonymous';
-document.head.appendChild(rageLogoPreload);
+// rageLogo is populated by game.js after loading (see game.js line ~170)
+// game.js exports it; we import it below to access the loaded image
+let rageLogo = null;
+// Late import: rageLogo reference is set by game.js during loading
+export function setRageLogo(img) { rageLogo = img; }
 
 // Title-screen menu state
 const MENU_ITEMS = ['VERSUS MODE', 'PRACTICE MODE', 'STORY MODE'];
@@ -42,12 +36,38 @@ export function menuDown() {
   if (next < MENU_TOTAL) menuIndex = next;
 }
 
+// Minimal pre-fight loading overlay — drawn on top of map background by caller
+export function drawPreFightLoading(ctx, progress) {
+  const pct = progress.total > 0 ? Math.min(progress.loaded / progress.total, 1) : 0;
+
+  if (progress.ready) {
+    ctx.textAlign = 'center';
+    ctx.font = 'bold 16px monospace';
+    ctx.fillStyle = '#ffcc44';
+    ctx.fillText('GET READY', GW / 2, GH / 2);
+    return;
+  }
+
+  // Thin gold bar centered
+  const barW = 200, barH = 4;
+  const barX = (GW - barW) / 2, barY = GH / 2 + 10;
+  ctx.fillStyle = '#222';
+  ctx.fillRect(barX, barY, barW, barH);
+  ctx.fillStyle = '#ffcc44';
+  ctx.fillRect(barX, barY, Math.round(barW * pct), barH);
+
+  ctx.textAlign = 'center';
+  ctx.font = 'bold 10px monospace';
+  ctx.fillStyle = '#aaa';
+  ctx.fillText(Math.round(pct * 100) + '%', GW / 2, barY - 8);
+}
+
 export function drawLoading(ctx, progress, renderTime) {
   ctx.fillStyle = '#000';
   ctx.fillRect(0, 0, GW, GH);
 
   // ---- Rage Logo at top ----
-  if (rageLogo.complete && rageLogo.naturalWidth > 0) {
+  if (rageLogo && rageLogo.complete && rageLogo.naturalWidth > 0) {
     const maxLogoW = GW * 0.60;
     const maxLogoH = GH * 0.28;
     const scale = Math.min(maxLogoW / rageLogo.naturalWidth, maxLogoH / rageLogo.naturalHeight);
@@ -613,33 +633,39 @@ export function drawControlsOverlay(ctx, p1Def, p2Def) {
 
 // Character select screen
 const CHAR_DEFS = [
-  { id: 'altman',        name: 'ALTMAN',   color: '#1a1a1a', accent: '#aaffaa', mug: 'assets/characters/sam_altman/altman_mug.png',           portrait: 'assets/characters/sam_altman/altman_fullbody.png' },
-  { id: 'zuck',          name: 'ZUCK',     color: '#1877f2', accent: '#ffffff', mug: 'assets/characters/zuck/zuck_mug.png',                   portrait: 'assets/characters/zuck/zuck_fullbody.png' },
-  { id: 'bezos',         name: 'BEZOS',    color: '#d4af37', accent: '#222222', mug: 'assets/characters/bezos/jacked_jeff_mug.png',     portrait: 'assets/characters/bezos/jacked_jeff_fullbody.png' },
-  { id: 'jensen',        name: 'JENSEN',   color: '#1a1a22', accent: '#76b900', mug: 'assets/characters/jensen/jensen_mug.png',               portrait: 'assets/characters/jensen/jensen_fullbody.png' },
-  { id: 'musk',          name: 'MUSK',     color: '#1a1a2e', accent: '#cc0000', mug: 'assets/characters/musk/elon_mugshot.png',               portrait: 'assets/characters/musk/elon_fullbody.png' },
-  { id: 'young_bezos',   name: 'YOUNG BEZOS',color: '#232f3e', accent: '#ff9900', mug: 'assets/characters/young_bezos/skinny_jeff_mug.png',     portrait: 'assets/characters/young_bezos/skinny_jeff_fullbody.png', mugScale: 0.85 },
-  { id: 'rio',           name: 'RIO',      color: '#552583', accent: '#FDB927', mug: 'assets/characters/rio/laker_mug.png',                 portrait: 'assets/characters/rio/laker_fullbody.png' },
-  { id: 'zuri',          name: 'ZURI',     color: '#2a2aaa', accent: '#ee2222', mug: 'assets/characters/zuri/kickboxer_mug.png',   portrait: 'assets/characters/zuri/kickboxer_fullbody.png' },
-  { id: 'dre',           name: 'DRE',      color: '#1a3a1a', accent: '#cc8800', mug: 'assets/characters/dre/dread_mug.png',                 portrait: 'assets/characters/dre/dread_fullbody.png' },
-  { id: 'sid',           name: 'SID',      color: '#2a2a2a', accent: '#ff4400', mug: 'assets/characters/sid/skater_mug.png',               portrait: 'assets/characters/sid/skater_fullbody.png' },
-  { id: 'jax',           name: 'JAX',      color: '#2c3e50', accent: '#3498db', mug: 'assets/characters/jax/tech_mug.png',              portrait: 'assets/characters/jax/tech_fullbody.png' },
+  { id: 'altman',        name: 'ALTMAN',   color: '#1a1a1a', accent: '#aaffaa', mug: 'assets/characters/sam_altman/altman_mug.webp',           portrait: 'assets/characters/sam_altman/altman_fullbody.png' },
+  { id: 'zuck',          name: 'ZUCK',     color: '#1877f2', accent: '#ffffff', mug: 'assets/characters/zuck/zuck_mug.webp',                   portrait: 'assets/characters/zuck/zuck_fullbody.png' },
+  { id: 'bezos',         name: 'BEZOS',    color: '#d4af37', accent: '#222222', mug: 'assets/characters/bezos/jacked_jeff_mug.webp',     portrait: 'assets/characters/bezos/jacked_jeff_fullbody.png' },
+  { id: 'jensen',        name: 'JENSEN',   color: '#1a1a22', accent: '#76b900', mug: 'assets/characters/jensen/jensen_mug.webp',               portrait: 'assets/characters/jensen/jensen_fullbody.png' },
+  { id: 'musk',          name: 'MUSK',     color: '#1a1a2e', accent: '#cc0000', mug: 'assets/characters/musk/elon_mugshot.webp',               portrait: 'assets/characters/musk/elon_fullbody.png' },
+  { id: 'young_bezos',   name: 'YOUNG BEZOS',color: '#232f3e', accent: '#ff9900', mug: 'assets/characters/young_bezos/skinny_jeff_mug.webp',     portrait: 'assets/characters/young_bezos/skinny_jeff_fullbody.png', mugScale: 0.85 },
+  { id: 'rio',           name: 'RIO',      color: '#552583', accent: '#FDB927', mug: 'assets/characters/rio/laker_mug.webp',                 portrait: 'assets/characters/rio/laker_fullbody.png' },
+  { id: 'zuri',          name: 'ZURI',     color: '#2a2aaa', accent: '#ee2222', mug: 'assets/characters/zuri/kickboxer_mug.webp',   portrait: 'assets/characters/zuri/kickboxer_fullbody.png' },
+  { id: 'dre',           name: 'DRE',      color: '#1a3a1a', accent: '#cc8800', mug: 'assets/characters/dre/dread_mug.webp',                 portrait: 'assets/characters/dre/dread_fullbody.png' },
+  { id: 'sid',           name: 'SID',      color: '#2a2a2a', accent: '#ff4400', mug: 'assets/characters/sid/skater_mug.webp',               portrait: 'assets/characters/sid/skater_fullbody.png' },
+  { id: 'jax',           name: 'JAX',      color: '#2c3e50', accent: '#3498db', mug: 'assets/characters/jax/tech_mug.webp',              portrait: 'assets/characters/jax/tech_fullbody.png' },
   { id: 'random',        name: 'RANDOM',   color: '#111111', accent: '#ffffff', mug: null, portrait: null },
 ];
 
-// Preload mugshot and portrait images
-CHAR_DEFS.forEach(ch => {
-  if (ch.mug) { ch._mug = new Image(); ch._mug.src = ch.mug; }
-  if (ch.portrait) { ch._portrait = new Image(); ch._portrait.src = ch.portrait; }
-});
+// Export CHAR_DEFS for use in game.js loading IIFE
+export { CHAR_DEFS };
+
+// Mugshot and portrait images loaded by game.js IIFE (see game.js ~line 235)
+// This ensures they're tracked in the loading progress bar
 
 // Offscreen canvas for pixelated RANDOM question mark (created once, reused)
 const _randomQCanvas = document.createElement('canvas');
 _randomQCanvas.width = 16; _randomQCanvas.height = 16;
 
-// Preload shared screen assets
-const _vsImg = new Image();       _vsImg.src = 'assets/screens/vs.png';
-const _mapWorldImg = new Image(); _mapWorldImg.src = 'assets/screens/map.png';
+// Deferred screen assets — loaded when needed, not at module parse
+let _vsImg = new Image();
+const _mapWorldImg = new Image();
+
+export function setVsImage(img) { if (img) _vsImg = img; }
+
+export function loadCharSelectAssets() {
+  if (!_mapWorldImg.src) _mapWorldImg.src = 'assets/screens/map.webp';
+}
 
 // Grid layout constants — 4/4/3 variable row layout, all rows centered
 const ROW_SIZES = [4, 4, 4];

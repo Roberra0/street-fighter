@@ -47,7 +47,11 @@ window.addEventListener('resize', resize);
 
 // ---- Active background map ----
 let _activeBG = null;
-export function setActiveBG(img) { _activeBG = img; _stageWidth = null; }
+export function setActiveBG(img) {
+  console.log('[BG] setActiveBG:', img?.src, 'complete:', img?.complete, 'naturalWidth:', img?.naturalWidth);
+  _activeBG = img;
+  _stageWidth = null;
+}
 
 // ---- Camera & stage bounds ----
 const WALL_PAD = 24;
@@ -62,10 +66,11 @@ export function getStageWidth() {
   if (_stageWidth !== null) return _stageWidth;
   if (_activeBG && _activeBG.complete && _activeBG.naturalWidth > 0) {
     _stageWidth = Math.round(_activeBG.naturalWidth * (GH / _activeBG.naturalHeight));
-  } else {
-    _stageWidth = GW; // fallback to viewport width
+    return _stageWidth;
   }
-  return _stageWidth;
+  // Fallback: return GW but DON'T cache, so this re-checks next call when image loads
+  console.warn('[BG] getStageWidth() fallback to GW — image not ready yet');
+  return GW;
 }
 
 export function getWallL() { return WALL_PAD; }
@@ -99,7 +104,15 @@ export function drawBG() {
     const worldLeft = _cameraX - ox;
     const srcX = Math.max(0, Math.round(worldLeft * scale));
     const srcW = Math.min(Math.round(viewW * scale), natW - srcX);
-    ctx.drawImage(_activeBG, srcX, 0, srcW, natH, -ox, 0, viewW, GH);
+
+    if (srcW <= 0) {
+      // Image geometry is in a bad state (race condition) — draw fallback
+      console.warn('[BG] srcW <= 0, drawing fallback fill');
+      ctx.fillStyle = '#0e0620';
+      ctx.fillRect(-ox, 0, viewW, GH);
+    } else {
+      ctx.drawImage(_activeBG, srcX, 0, srcW, natH, -ox, 0, viewW, GH);
+    }
   } else {
     ctx.fillStyle = '#0e0620';
     ctx.fillRect(-ox, 0, viewW, GH);
@@ -225,6 +238,19 @@ export function loadSpriteSheetAsync(def) {
       })
     )
   );
+}
+
+// Count how many sprite images for a character def are loaded vs total
+export function getDefLoadProgress(def) {
+  let total = 0, loaded = 0;
+  const check = img => { if (!img) return; total++; if (img.complete && img.naturalWidth > 0) loaded++; };
+  check(def._spriteImage);
+  check(def._idleImage);
+  check(def._customSheetImage);
+  if (def._animSheetImages) Object.values(def._animSheetImages).forEach(check);
+  if (def.overlay?._img) check(def.overlay._img);
+  if (def.projectile?._imgs) def.projectile._imgs.forEach(check);
+  return { total, loaded };
 }
 
 export function drawProjectiles(projs) {
