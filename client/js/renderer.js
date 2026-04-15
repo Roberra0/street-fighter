@@ -132,70 +132,10 @@ export function drawShadow(fighter) {
   ctx.fillRect(Math.round(fighter.x - sw / 2), GROUND + 2, Math.round(sw), 3);
 }
 
-// ---- Fighter placeholder renderer ----
 // ---- Sprite sheet support ----
 
-const SHEET_COLS = 8;
-const FRAME_W    = 64;
-const FRAME_H    = 80;
-
-// Maps game state → sheet frame range.
-// Indices match the grid assembled in ryu_sheet.png.
-const _SHEET_ANIM = {
-  idle:       { start: 0,  count: 4 },
-  walk:       { start: 4,  count: 4 },
-  walkBack:   { start: 8,  count: 4 },
-  crouch:     { start: 12, count: 2 },
-  jumpRise:   { start: 16, count: 2 },
-  jumpPeak:   { start: 18, count: 2 },
-  jumpFall:   { start: 20, count: 2 },
-  land:       { start: 22, count: 2 },
-  punch:      { start: 24, count: 4 },
-  kick:       { start: 28, count: 4 },
-  heavyPunch: { start: 32, count: 5 },
-  heavyKick:  { start: 37, count: 5 },
-  block:      { start: 44, count: 2 },
-  hit:        { start: 48, count: 2 },
-  airHit:     { start: 48, count: 2 },
-  ko:         { start: 52, count: 8 },
-  special:    { start: 60, count: 4 },
-};
-
-function _sheetFrameIdx(fighter) {
-  const state = fighter.state;
-  const f     = fighter.animFrame;
-  let anim;
-  if (state === 'jump') {
-    if (fighter.vy < -1.5)    anim = _SHEET_ANIM.jumpRise;
-    else if (fighter.vy < 1.5) anim = _SHEET_ANIM.jumpPeak;
-    else                       anim = _SHEET_ANIM.jumpFall;
-  } else if (state === 'walk') {
-    anim = (fighter.vx * fighter.facing >= 0) ? _SHEET_ANIM.walk : _SHEET_ANIM.walkBack;
-  } else if (state.startsWith('special')) {
-    anim = _SHEET_ANIM.special;
-  } else {
-    anim = _SHEET_ANIM[state] || _SHEET_ANIM.idle;
-  }
-  return anim.start + (f % anim.count);
-}
-
-// Call once at startup for any def that has a spriteSheet or idleSheet path.
+// Call once at startup for any def that has animSheets.
 export function loadSpriteSheet(def) {
-  if (def.spriteSheet && !def._spriteImage) {
-    const img = new Image();
-    img.src = def.spriteSheet;
-    def._spriteImage = img;
-  }
-  if (def.idleSheet && !def._idleImage) {
-    const img = new Image();
-    img.src = def.idleSheet;
-    def._idleImage = img;
-  }
-  if (def.customSheet && !def._customSheetImage) {
-    const img = new Image();
-    img.src = def.customSheet;
-    def._customSheetImage = img;
-  }
   if (def.animSheets && !def._animSheetImages) {
     def._animSheetImages = {};
     for (const [key, sheet] of Object.entries(def.animSheets)) {
@@ -222,9 +162,6 @@ export function loadSpriteSheet(def) {
 export function loadSpriteSheetAsync(def) {
   loadSpriteSheet(def); // Create Image objects on def
   const imgs = [];
-  if (def._spriteImage) imgs.push(def._spriteImage);
-  if (def._idleImage) imgs.push(def._idleImage);
-  if (def._customSheetImage) imgs.push(def._customSheetImage);
   if (def._animSheetImages) imgs.push(...Object.values(def._animSheetImages));
   if (def.overlay?._img) imgs.push(def.overlay._img);
   if (def.projectile?._imgs) imgs.push(...def.projectile._imgs);
@@ -244,9 +181,6 @@ export function loadSpriteSheetAsync(def) {
 export function getDefLoadProgress(def) {
   let total = 0, loaded = 0;
   const check = img => { if (!img) return; total++; if (img.complete && img.naturalWidth > 0) loaded++; };
-  check(def._spriteImage);
-  check(def._idleImage);
-  check(def._customSheetImage);
   if (def._animSheetImages) Object.values(def._animSheetImages).forEach(check);
   if (def.overlay?._img) check(def.overlay._img);
   if (def.projectile?._imgs) def.projectile._imgs.forEach(check);
@@ -378,63 +312,7 @@ export function drawFighterPlaceholder(fighter, renderTime) {
     }
   }
 
-  // Per-state sheet: use idleSheet when in idle state
-  const idleImg = fighter.state === 'idle' ? fighter.def._idleImage : null;
-  if (idleImg && idleImg.complete && idleImg.naturalWidth > 0) {
-    const cols  = fighter.def.idleSheetCols || 4;
-    const fw    = fighter.def.idleFrameW   || 256;
-    const fh    = fighter.def.idleFrameH   || 455;
-    const f     = fighter.animFrame % (fighter.def.animations.idle?.frames || 12);
-    const div     = fighter.def.idleSheetDivisor || 2;
-    const destW   = fw / div;
-    const destH   = fh / div;
-    const offsetY = (fighter.def.idleSheetOffsetY || 0) / div;
-    ctx.imageSmoothingEnabled = false;
-    ctx.drawImage(idleImg, (f % cols) * fw, Math.floor(f / cols) * fh, fw, fh, -destW / 2, -destH + offsetY, destW, destH);
-    ctx.restore();
-  // Custom per-character full sprite sheet (all states)
-  } else if (fighter.def._customSheetImage && fighter.def.customSheetAnims) {
-    const img = fighter.def._customSheetImage;
-    if (img.complete && img.naturalWidth > 0) {
-      const animMap = fighter.def.customSheetAnims;
-      const stateKey = fighter.state.startsWith('special_') ? 'special' :
-                       fighter.state === 'super' ? 'super' : fighter.state;
-      const anim  = animMap[stateKey] || animMap.idle;
-      const cols  = fighter.def.customSheetCols || 10;
-      const fw    = fighter.def.customFrameW    || 1102;
-      const fh    = fighter.def.customFrameH    || 712;
-      const div   = fighter.def.customSheetDivisor || 10;
-      const f     = fighter.animFrame % anim.count;
-      const fi    = anim.start + f;
-      const col   = fi % cols;
-      const row   = Math.floor(fi / cols);
-      // Optional source crop — trims whitespace padding from each frame
-      const cropX = fighter.def.customSrcCropX !== undefined ? fighter.def.customSrcCropX : 0;
-      const cropY = fighter.def.customSrcCropY !== undefined ? fighter.def.customSrcCropY : 0;
-      const cropW = fighter.def.customSrcCropW !== undefined ? fighter.def.customSrcCropW : fw;
-      const cropH = fighter.def.customSrcCropH !== undefined ? fighter.def.customSrcCropH : fh;
-      const destW   = cropW / div;
-      const destH   = cropH / div;
-      const offsetY = (fighter.def.customSheetOffsetY || 0) / div;
-      ctx.imageSmoothingEnabled = false;
-      ctx.drawImage(img, col * fw + cropX, row * fh + cropY, cropW, cropH, -destW / 2, -destH + offsetY, destW, destH);
-    }
-    ctx.restore();
-  // Full sprite sheet — use it for all states
-  } else {
-    const sprImg = fighter.def._spriteImage;
-    if (sprImg && sprImg.complete && sprImg.naturalWidth > 0) {
-      const fi  = _sheetFrameIdx(fighter);
-      const col = fi % SHEET_COLS;
-      const row = Math.floor(fi / SHEET_COLS);
-      ctx.drawImage(sprImg, col * FRAME_W, row * FRAME_H, FRAME_W, FRAME_H, -32, -FRAME_H, FRAME_W, FRAME_H);
-      ctx.restore();
-    } else {
-      ctx.restore();
-      throw new Error(`Sprite PNG not loaded for character: ${fighter.def.id}`);
-    }
-  }
-
+  ctx.restore();
   drawComboCounter(fighter, px, py, renderTime);
 }
 

@@ -1,18 +1,5 @@
 // fighter.js — Fighter class + stepAnimation() + character registry
 import { getWallL, getWallR } from './renderer.js';
-const t = () => `+${performance.now().toFixed(1)}ms`;
-
-// ---- Altman idle frame log ----
-const _altmanLog = [];
-window.downloadAltmanLog = () => {
-  const blob = new Blob([_altmanLog.join('\n')], { type: 'text/plain' });
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(blob);
-  a.download = 'samidlelog.md';
-  a.click();
-};
-window.addEventListener('keydown', e => { if (e.key === 'L') window.downloadAltmanLog(); });
-
 import rioDef        from '../assets/characters/rio/def.js';
 import zuriDef       from '../assets/characters/zuri/def.js';
 import dreDef        from '../assets/characters/dre/def.js';
@@ -158,11 +145,6 @@ export class Fighter {
         this.animFrame++;
         if (this.animFrame >= animDef.frames) {
           this.animFrame = animDef.loopFrom !== undefined ? animDef.loopFrom : 0;
-        }
-        if (this.def.id === 'altman' && this._state === 'idle') {
-          const seq = animDef.frameSequence;
-          const spriteFrame = seq ? seq[Math.min(this.animFrame, seq.length - 1)] : this.animFrame;
-          _altmanLog.push(`animFrame=${this.animFrame} spriteFrame=${spriteFrame}`);
         }
       } else {
         this.animFrame = Math.min(this.animFrame + 1, animDef.frames - 1);
@@ -366,13 +348,7 @@ export class Fighter {
     }
 
     // Attack animation timer — handles all 4 normal attack states
-    const attackStates = {
-      punch:      this.def.moves.punch,
-      heavyPunch: this.def.moves.heavyPunch,
-      kick:       this.def.moves.kick,
-      heavyKick:  this.def.moves.heavyKick,
-    };
-    const atkMove = attackStates[this._state];
+    const atkMove = this.def.moves[this._state];
     if (atkMove) {
       this.timer++;
       const total = atkMove.startup + atkMove.active + atkMove.recovery;
@@ -508,9 +484,6 @@ export class Fighter {
     if (this.inputBufferTimer > 0) {
       this.inputBufferTimer--;
     } else {
-      if (this.inputBuffer) {
-        console.log(`${t()} [P${this.playerIdx + 1}] buffer EXPIRED: ${this.inputBuffer} | state: ${this._state}`);
-      }
       this.inputBuffer = null;
     }
 

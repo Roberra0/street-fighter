@@ -6,7 +6,7 @@ import { canvas, ctx, drawBG, setActiveBG, drawShadow, drawFighterPlaceholder, d
 import { pushApart, resolveHits, clampToWalls } from './collision.js';
 import * as audio    from './audio.js';
 import { spawnBlockSpark, updateParticles, drawParticles, clearParticles } from './particles.js';
-import { drawHUD, drawMessage, drawTitle, drawCharSelect, drawMapSelect, drawPauseOverlay, drawControlsOverlay, drawHighScore, drawViewScores, drawLoading, drawPreFightLoading, drawSplash, getTitleMenuIndex, menuUp, menuDown, resetTitleMenu, setRageLogo, setVsImage, setKeyboardImg, CHAR_DEFS, loadCharSelectAssets } from './ui.js';
+import { drawHUD, drawMessage, drawTitle, drawCharSelect, drawMapSelect, drawPauseOverlay, drawControlsOverlay, drawHighScore, drawViewScores, drawLoading, drawPreFightLoading, drawSplash, getTitleMenuIndex, menuUp, menuDown, resetTitleMenu, setRageLogo, setVsImage, setKeyboardImg, CHAR_DEFS, loadCharSelectAssets, loadHighScores, saveHighScore, HS_MAX } from './ui.js';
 import { cpuSnapshot, getCpuDifficulty, setCpuDifficulty, resetCpuState } from './cpu.js';
 
 // ---- Constants ----
@@ -98,30 +98,10 @@ let zuckMobImg = null;
 // ---- Altman KO sprite (lazy-loaded when altman is selected) ----
 let altmanKoImg = null;
 
-// ---- Key layout image (controls display for pre-fight) ----
-let keyLayoutImg = null;
-
 // ---- Score (1P mode) ----
 let p1Score = 0;
 
-// ---- High score helpers ----
-const HS_KEY = 'SFHighScores';
-const HS_MAX = 10;
-const HS_SEED = [
-  { name: 'JNY', score: 420 },
-  { name: 'MKE', score: 380 },
-  { name: 'SPR', score: 350 },
-  { name: 'RND', score: 310 },
-];
-function loadHighScores() {
-  try { const r = localStorage.getItem(HS_KEY); return r ? JSON.parse(r) : HS_SEED.slice(); } catch { return HS_SEED.slice(); }
-}
-function saveHighScore(name, score) {
-  const arr = loadHighScores();
-  arr.push({ name, score });
-  arr.sort((a, b) => b.score - a.score);
-  localStorage.setItem(HS_KEY, JSON.stringify(arr.slice(0, HS_MAX)));
-}
+// High score helpers imported from ui.js (loadHighScores, saveHighScore)
 function getInsertIdx(scores, score) {
   for (let i = 0; i < scores.length; i++) if (score > scores[i].score) return i;
   return scores.length;
@@ -345,9 +325,6 @@ function loop(t) {
   const dt = Math.min(t - last, 100); // clamp: skip if tab was hidden
   last = t;
 
-  // Sample key edges ONCE per rAF, BEFORE the tick loop
-  input.sampleKeys();
-
   acc += dt;
   let ticked = false;
   while (acc >= TICK_MS) {
@@ -365,8 +342,7 @@ function loop(t) {
 }
 
 // ---- Simulation tick ----
-// Accepts optional inputOverrides for future rollback replay (Part 2 hook — not implemented).
-function tick(inputOverrides = null) {
+function tick() {
   // Pause (1P only)
   if (paused) return;
 
@@ -465,7 +441,10 @@ function tick(inputOverrides = null) {
       }
     }
 
-    processEvents([...events1, ...events2, ...hitEvents1, ...hitEvents2]);
+    if (events1.length)    processEvents(events1);
+    if (events2.length)    processEvents(events2);
+    if (hitEvents1.length) processEvents(hitEvents1);
+    if (hitEvents2.length) processEvents(hitEvents2);
 
     // "Finish him" — fire once when either fighter drops below 20% hp
     if (!finishHimFired) {
@@ -562,15 +541,11 @@ function updateProjectiles() {
       const target = proj.ownerId === 0 ? p2 : p1;
       const hw = target.def.hurtboxW / 2;
       const hh = target.def.hurtboxH;
-      if (proj.img?.src?.includes('tesla')) {
-        console.log('[tesla collision] proj:', {x: proj.x, y: proj.y}, 'target:', {x: target.x, y: target.y, hw, hh}, 'check:', proj.x > target.x - hw && proj.x < target.x + hw && proj.y > target.y - hh && proj.y < target.y);
-      }
       if (proj.x > target.x - hw && proj.x < target.x + hw &&
           proj.y > target.y - hh && proj.y < target.y) {
         const events = target.receiveDamage(proj.damage, proj.knockback, proj.owner, false);
         processEvents(events);
         proj.hasHit = true;
-        console.log('[tesla HIT!] damage:', proj.damage);
       }
     }
   }
@@ -607,14 +582,6 @@ function startRound() {
       setTimeout(() => loadSpriteSheet(CHARACTERS[id]), 3000 + i * 500);
     });
   }
-}
-
-function startMatch() {
-  p1Wins  = 0;
-  p2Wins  = 0;
-  roundNum = 1;
-  p1Score  = 0;
-  startRound();
 }
 
 function checkRoundEnd() {
@@ -1048,12 +1015,6 @@ function render(renderTime) {
 
   // Pre-fight loading gate — wait for sprites/map/extras before starting fight
   if (gameState === 'preFight') {
-    // Load key layout image on first enter
-    if (!keyLayoutImg) {
-      keyLayoutImg = new Image();
-      keyLayoutImg.src = 'assets/screens/key_layout.webp';
-    }
-
     const d1p = getDefLoadProgress(p1.def);
     const d2p = getDefLoadProgress(p2.def);
     const mapImg = MAP_DEFS[mapSelIdx]._img;
@@ -1074,20 +1035,6 @@ function render(renderTime) {
     const allReady = loadedAssets >= totalAssets;
 
     ctx.save(); ctx.translate(osX, 0);
-    drawBG();
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
-    ctx.fillRect(0, 0, 640, 360);
-
-    // Draw key layout at top if loaded
-    if (keyLayoutImg && keyLayoutImg.complete && keyLayoutImg.naturalWidth > 0) {
-      const maxW = GW * 0.8;
-      const scale = Math.min(1, maxW / keyLayoutImg.naturalWidth);
-      const w = keyLayoutImg.naturalWidth * scale;
-      const h = keyLayoutImg.naturalHeight * scale;
-      const x = (GW - w) / 2;
-      ctx.drawImage(keyLayoutImg, x, 10, w, h);
-    }
-
     drawPreFightLoading(ctx, { loaded: loadedAssets, total: totalAssets, ready: allReady });
     ctx.restore();
 
@@ -1202,7 +1149,7 @@ function render(renderTime) {
   applyScreenShake(screenShake);
 
   // Background draws in screen space (parallax handled internally, fills overscan)
-  drawBG(renderTime);
+  drawBG();
 
   // World-space objects: translate by camera
   ctx.save();

@@ -9,16 +9,7 @@ export default {
     walkSpeed: 2.8,
     jumpVy: -13.23,
     jumpVx: 2.8,
-  },
-  palette: {
-    body:   '#552583',  // Lakers purple
-    skin:   '#8B5E3C',
-    hair:   '#111111',
-    accent: '#FDB927',  // Lakers gold
-    pants:  '#552583',
-    shoes:  '#FDB927',
-  },
-  hurtboxW: 68, hurtboxH: 165,
+  },  hurtboxW: 68, hurtboxH: 165,
   crouchHurtboxW: 74, crouchHurtboxH: 91,
   moves: {
     punch: {

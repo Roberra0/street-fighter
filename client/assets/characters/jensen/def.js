@@ -9,14 +9,7 @@ export default {
     walkSpeed: 2.4,
     jumpVy: -12.08,
     jumpVx: 2.4,
-  },
-  palette: {
-    skin:   '#cccccc',
-    hair:   '#333333',
-    outfit: '#76b900',
-    accent: '#ffffff',
-  },
-  hurtboxW: 62, hurtboxH: 190,
+  },  hurtboxW: 62, hurtboxH: 190,
   crouchHurtboxW: 68, crouchHurtboxH: 105,
   moves: {
     punch:      { startup: 2, active: 6, recovery: 6, damage: 8,  knockback: 2.5, hitboxOffsetX: 28, hitboxW: 55, hitboxY: -148, hitboxH: 30 },

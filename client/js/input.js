@@ -1,7 +1,5 @@
 // input.js — raw key state, per-player input snapshot, input buffer
 
-import { getRemoteInput } from './network.js';
-
 // --- Key state ---
 const keysDown = new Set();
 // Counter map instead of Set — tracks how many times a key was pressed this frame.
@@ -41,19 +39,10 @@ export const DIR_RIGHT = 0b1000;
 const dirBuffer  = [new Uint8Array(BUFFER_SIZE), new Uint8Array(BUFFER_SIZE)];
 const bufferHead = [0, 0];
 
-// Called once per rAF, BEFORE the tick loop.
-// pressedThisAccum is already populated by keydown events directly — nothing to do here.
-// Kept as a call-site hook for future use (e.g. rollback input sampling).
-export function sampleKeys() {}
-
 // Called per simulation tick. Returns input snapshot for the given player.
 // Movement is level-triggered (from keysDown).
 // Punch/kick/block button presses are edge-triggered (from pressedThisAccum).
 export function snapshot(playerIdx) {
-  // Check network first (Part 2 hook — currently always returns null)
-  const remote = getRemoteInput(playerIdx);
-  if (remote !== null) return remote;
-
   const b = BINDINGS[playerIdx];
 
   const left  = keysDown.has(b.left);
@@ -139,10 +128,18 @@ export function isEscapeKey() {
 }
 
 // Controls overlay toggle
-export function isTabKey() { return pressedThisAccum.get('Tab'); }
+export function isTabKey() {
+  const c = pressedThisAccum.get('Tab');
+  if (c) pressedThisAccum.delete('Tab');
+  return c;
+}
 
 // Debug overlay toggle (I key)
-export function isDebugKey() { return pressedThisAccum.get('KeyI'); }
+export function isDebugKey() {
+  const c = pressedThisAccum.get('KeyI');
+  if (c) pressedThisAccum.delete('KeyI');
+  return c;
+}
 
 // Arrow-key edge triggers for menu navigation.
 export function isMenuUp() {

@@ -18,11 +18,6 @@ const FIGHT_SONGS = [
   'assets/audio/music/fight_song5.mp3',
 ];
 
-// Menu/intro songs: preloaded with game assets
-const INTRO_SONGS = [
-  'assets/audio/music/intro.mp3',
-];
-
 const MENU_SONGS = [
   'assets/audio/music/Rage_song.mp4',
   'assets/audio/music/Rage_song2.mp4',
@@ -59,7 +54,6 @@ export function playMusic(src, volume = 0.4) {
   musicBaseVol   = volume;
   musicEl.play().catch(() => {});
   currentTrack = src;
-  console.log(`[audio] music: ${src}`);
 
   // Preload next menu song while this one plays (if it's a menu song)
   if (MENU_SONGS.includes(src)) {
@@ -158,7 +152,6 @@ export function initAudio() {
 
 function playBuffer(key, vol = 1, delay = 0) {
   if (!audioCtx) return;
-  console.log(`[audio] ${key}${delay ? ` (+${(delay * 1000).toFixed(0)}ms)` : ''}`);
   // Buffer not ready yet (still loading) — fall back to HTMLAudioElement
   if (!buffers[key]) {
     const path = SOUND_FILES[key];
@@ -212,7 +205,6 @@ function playVoice(voiceSet, action, vol) {
     const key  = `${voiceSet}_${action}`;
     const path = `assets/audio/voice/sets/${voiceSet}/${action}.mp3`;
     if (!audioCtx) return;
-    console.log(`[audio] ${key}`);
     if (!buffers[key]) {
       try { const a = new Audio(path); a.volume = vol; a.play(); } catch (e) {}
       return;
@@ -302,29 +294,6 @@ export function sfxCharSelect() {
   playBuffer(key, 0.65);
 }
 
-// Legacy no-ops — call sites removed in game.js
-export function sfxRoundFight() {}
-export function sfxPerfect()    {}
-export function sfxCombo5()     {}
-
-// --- Synth fallbacks for sounds with no audio file ---
-
-export function sfxHitLight() {
-  beep(200, 0.06, 'square',   0.14);
-  beep(150, 0.04, 'sawtooth', 0.08);
-}
-
-export function sfxHitHeavy() {
-  beep(80, 0.12, 'sawtooth', 0.22);
-  beep(50, 0.10, 'square',   0.18);
-}
-
 export function sfxBlock() {
   beep(400, 0.06, 'triangle', 0.1);
 }
-
-// Legacy aliases — kept so existing call sites don't crash
-export function sfxHit()   { sfxPunchHit(); }
-export function sfxSwing() { sfxPunchSwing(); }
-export function sfxKO()    {} // replaced by sfxFighterKO + sfxKOThud + sfxKOAnnounce
-export function sfxRound() {} // replaced by sfxRoundAnnounce + sfxRoundFight

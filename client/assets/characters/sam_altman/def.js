@@ -10,14 +10,7 @@ export default {
     walkSpeed: 2.4,    // TODO: tune
     jumpVy: -10.5,
     jumpVx: 2.4,
-  },
-  palette: {
-    skin:   '#cccccc', // TODO: set from character art
-    hair:   '#333333',
-    outfit: '#666666',
-    accent: '#ff0000',
-  },
-  hurtboxW: 62, hurtboxH: 190,     // TODO: tune to character proportions
+  },  hurtboxW: 62, hurtboxH: 190,     // TODO: tune to character proportions
   crouchHurtboxW: 68, crouchHurtboxH: 105,
   moves: {
     punch:      { startup: 2, active: 6, recovery: 6, damage: 8,  knockback: 2.5, hitboxOffsetX: 0, hitboxW: 640, hitboxY: -190, hitboxH: 500 },

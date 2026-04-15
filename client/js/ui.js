@@ -5,6 +5,25 @@ const GH = 360;
 
 export const BUILD = '2026-03-24 22:29 PST v8';
 
+// ---- High score helpers (canonical source — used by game.js too) ----
+const HS_KEY = 'SFHighScores';
+export const HS_MAX = 10;
+const HS_SEED = [
+  { name: 'JNY', score: 420 },
+  { name: 'MKE', score: 380 },
+  { name: 'SPR', score: 350 },
+  { name: 'RND', score: 310 },
+];
+export function loadHighScores() {
+  try { const r = localStorage.getItem(HS_KEY); return r ? JSON.parse(r) : HS_SEED.slice(); } catch { return HS_SEED.slice(); }
+}
+export function saveHighScore(name, score) {
+  const arr = loadHighScores();
+  arr.push({ name, score });
+  arr.sort((a, b) => b.score - a.score);
+  localStorage.setItem(HS_KEY, JSON.stringify(arr.slice(0, HS_MAX)));
+}
+
 // titleBlink is render-side state — lives in ui.js module scope
 let titleBlink = 0;
 
@@ -300,12 +319,6 @@ export function drawHUD(ctx, { p1, p2, p1Wins, p2Wins, roundTimer, roundNum, ren
   drawConnector(MUG + 2, true);
   drawConnector(GW - MUG - CON - 2, false);
 
-  // ── Timer circle background (drawn before HP bars so bars render over the edges) ──
-  ctx.fillStyle = '#3a2200';
-  ctx.beginPath(); ctx.arc(cx, cy, R + 2, 0, Math.PI * 2); ctx.fill();
-  ctx.fillStyle = '#cc8800';
-  ctx.beginPath(); ctx.arc(cx, cy, R, 0, Math.PI * 2); ctx.fill();
-
   // ── HP bars ──────────────────────────────────────────────────────────────────
   // P1 (fills left → right)
   const p1Ratio  = p1.hp / p1.def.stats.hp;
@@ -411,43 +424,6 @@ export function drawHUD(ctx, { p1, p2, p1Wins, p2Wins, roundTimer, roundNum, ren
   ctx.fillText('ROUND ' + roundNum, cx, cy + R + 9);
 }
 
-// KO door-slide animation — call each rAF frame while active.
-// Returns the next frame number, or null when the animation is complete.
-export function drawKOScreen(ctx, frame) {
-  const SLIDE_IN = 8, HOLD = 90, SLIDE_OUT = 8;
-  const TOTAL = SLIDE_IN + HOLD + SLIDE_OUT;
-
-  let panelW;
-  if (frame < SLIDE_IN) {
-    panelW = Math.round((GW / 2) * (frame / SLIDE_IN));
-  } else if (frame < SLIDE_IN + HOLD) {
-    panelW = GW / 2;
-  } else {
-    const t = (frame - SLIDE_IN - HOLD) / SLIDE_OUT;
-    panelW = Math.round((GW / 2) * (1 - t));
-  }
-
-  ctx.fillStyle = 'rgba(10,10,10,0.85)';
-  ctx.fillRect(0, 0, panelW, GH);
-  ctx.fillRect(GW - panelW, 0, panelW, GH);
-
-  // KO text appears 2 frames after panels fully close
-  if (frame >= SLIDE_IN + 2 && frame < SLIDE_IN + HOLD) {
-    ctx.save();
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.font = 'bold 72px monospace';
-    ctx.lineWidth = 8;
-    ctx.strokeStyle = '#000000';
-    ctx.strokeText('KO', GW / 2, GH / 2);
-    ctx.fillStyle = '#ffcc22';
-    ctx.fillText('KO', GW / 2, GH / 2);
-    ctx.restore();
-  }
-
-  return frame + 1 >= TOTAL ? null : frame + 1;
-}
-
 export function drawMessage(ctx, msgText) {
   if (!msgText) return;
   ctx.fillStyle = '#00000099';
@@ -512,9 +488,7 @@ export function drawTitle(ctx, drawBG, renderTime) {
   });
 
   // ── Top scores panel ──────────────────────────────────────────────────────────
-  let allScores = [];
-  const _uiSeed = [{name:'JNY',score:420},{name:'MKE',score:380},{name:'SPR',score:350},{name:'RND',score:310}];
-  try { const r = localStorage.getItem('SFHighScores'); allScores = r ? JSON.parse(r) : _uiSeed; } catch { allScores = _uiSeed; }
+  const allScores = loadHighScores();
   const top3 = allScores.slice(0, 3);
 
   const scoresHighlighted = menuIndex === MENU_ITEMS.length; // SEE MORE virtual slot
@@ -608,9 +582,9 @@ export function drawControlsOverlay(ctx, p1Def, p2Def) {
 
   const col1 = [
     ['Move',  '← → ↑ ↓'],
-    ['Punch', 'Z'],
-    ['Kick',  'X'],
-    ['Block', 'C  or  hold ← (back)'],
+    ['Punch', 'A'],
+    ['Kick',  'S'],
+    ['Block', 'X  or  hold ← (back)'],
     ['Dash',  '← ←  or  → →'],
   ];
   const col2 = [
@@ -1330,8 +1304,7 @@ export function drawHighScore(ctx, renderTime, { scores, playerScore, initials, 
 // ── Full high score viewer (title → TOP SCORES → SEE MORE) ───────────────────
 export function drawViewScores(ctx, renderTime) {
   let scores = [];
-  const _vsSeed = [{name:'JNY',score:420},{name:'MKE',score:380},{name:'SPR',score:350},{name:'RND',score:310}];
-  try { const r = localStorage.getItem('SFHighScores'); scores = r ? JSON.parse(r) : _vsSeed; } catch { scores = _vsSeed; }
+  scores = loadHighScores();
 
   ctx.fillStyle = '#000010';
   ctx.fillRect(0, 0, GW, GH);
