@@ -234,8 +234,10 @@ export function sfxCrouch(voiceSet) {
   playVoice(voiceSet, 'crouch', 0.45);
 }
 
+let attackVoiceToggle = 0;
 export function sfxAttack(voiceSet) {
   if (!voiceSet || voiceSet === 'female') return;
+  if (++attackVoiceToggle % 2 === 0) return;
   playVoice(voiceSet, 'attack', 0.45);
 }
 

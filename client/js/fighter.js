@@ -542,7 +542,7 @@ export class Fighter {
         this.hp = Math.max(0, this.hp - chip);
         this.tookDamage = true;
       }
-      events.push({ type: 'block', x: midX, y: this.y - 34 });
+      events.push({ type: 'block', x: midX, y: this.y - 34, blockerId: this.playerIdx });
       return events;
     }
 

@@ -8,6 +8,7 @@ import * as audio    from './audio.js';
 import { spawnBlockSpark, updateParticles, drawParticles, clearParticles } from './particles.js';
 import { drawHUD, drawMessage, drawTitle, drawCharSelect, drawMapSelect, drawPauseOverlay, drawControlsOverlay, drawHighScore, drawViewScores, drawLoading, drawPreFightLoading, drawSplash, getTitleMenuIndex, menuUp, menuDown, resetTitleMenu, setRageLogo, setVsImage, setKeyboardImg, CHAR_DEFS, loadCharSelectAssets, loadHighScores, saveHighScore, HS_MAX } from './ui.js';
 import { cpuSnapshot, getCpuDifficulty, setCpuDifficulty, resetCpuState } from './cpu.js';
+import * as analytics from './analytics.js';
 
 // ---- Constants ----
 const TICK_MS = 1000 / 60; // ~16.667ms per tick
@@ -58,6 +59,8 @@ let p1SelIdx    = 0;   // index into CHAR_IDS
 let p2SelIdx    = 1;
 let p1Confirmed = false;
 let p2Confirmed = false;
+let p1WasRandom = false;
+let p2WasRandom = false;
 let charSelectDelay = 0; // ticks to wait after both confirmed before map screen
 
 // ---- Map definitions ----
@@ -291,6 +294,7 @@ let assetsReady = false;
   loadProgress.ready = true;
   assetsReady = true;
   console.log(`[preload] assetsReady = true at ${performance.now().toFixed(0)}ms`);
+  analytics.trackPageLoad(preloadEnd - preloadStart, loadProgress.files);
 
   // --- Tier 2: Background preload (maps, overlays) starts immediately after Tier 1 ---
   console.log(`[preload] Tier 2 background preload starting`);
@@ -465,6 +469,8 @@ function tick() {
     msgTimer--;
     if (msgTimer <= 0) {
       if (p1Wins >= 2 || p2Wins >= 2) {
+        analytics.onMatchEnd(p1Wins, p2Wins, p1.def.id, p2.def.id,
+                             MAP_DEFS[mapSelIdx].id, gameMode, roundNum, p1Score);
         gameState = 'matchEnd';
         msgText   = (p1Wins >= 2 ? 'PLAYER 1' : 'PLAYER 2') + ' WINS!';
         msgTimer  = 200;
@@ -571,6 +577,7 @@ function startRound() {
   koSlideFrame   = null;
   zuckMobOverlay = null;
   finishHimFired = false;
+  analytics.onRoundStart(roundNum, p1.def, p2.def);
   audio.playFightMusic();
 
   // Background-load remaining character sprites (staggered, once per session)
@@ -609,6 +616,9 @@ function checkRoundEnd() {
     } else {
       msgText = 'DRAW!';
     }
+    analytics.onRoundEnd(roundNum, p1.hp, p2.hp, p1.def.stats.hp, p2.def.stats.hp,
+                         p1Wins, p2Wins, msgText, roundTimer, p1Score, gameMode,
+                         MAP_DEFS[mapSelIdx].id);
   }
 }
 
@@ -616,6 +626,7 @@ function checkRoundEnd() {
 // Fires audio and spawns particles from events returned by Fighter.update() / receiveDamage().
 function processEvents(events) {
   for (const ev of events) {
+    if (gameState === 'fight') analytics.onFightEvent(ev);
     if ((ev.type === 'hit' || ev.type === 'ko') && ev.scoreAward && ev.scorerId === 0 && gameMode === '1p') {
       p1Score += ev.scoreAward;
     }
@@ -782,6 +793,8 @@ function drawZuckMob(renderTime) {
 // ---- Render ----
 // renderTime is the raw rAF timestamp (wall ms) used for visual-only animations.
 function render(renderTime) {
+  analytics.checkStateTransition(gameState);
+
   // Smooth upscaling for screens with detailed artwork; pixelated for gameplay
   const smooth = gameState === 'loading' || gameState === 'splash';
   canvas.style.imageRendering = smooth ? 'auto' : 'pixelated';
@@ -923,14 +936,14 @@ function render(renderTime) {
       if (menuNavCooldown === 0 && input.isMenuRight()) { p1SelIdx = csGridNav(p1SelIdx, 'right'); menuNavCooldown = MENU_NAV_DELAY; audio.sfxScroll(); }
       if (menuNavCooldown === 0 && input.isMenuUp())    { p1SelIdx = csGridNav(p1SelIdx, 'up');    menuNavCooldown = MENU_NAV_DELAY; audio.sfxScroll(); }
       if (menuNavCooldown === 0 && input.isMenuDown())  { p1SelIdx = csGridNav(p1SelIdx, 'down');  menuNavCooldown = MENU_NAV_DELAY; audio.sfxScroll(); }
-      if (input.isMenuConfirm()) { p1SelIdx = resolveRandom(p1SelIdx); p1Confirmed = true; audio.sfxConfirmation(); setTimeout(() => audio.sfxCharSelect(), 500); }
+      if (input.isMenuConfirm()) { p1WasRandom = CHAR_IDS[p1SelIdx] === 'random'; p1SelIdx = resolveRandom(p1SelIdx); p1Confirmed = true; audio.sfxConfirmation(); setTimeout(() => audio.sfxCharSelect(), 500); }
     } else if (!p2Confirmed) {
       // 1P: P1 picks CPU's character. 2P: second player picks.
       if (menuNavCooldown === 0 && input.isMenuLeft())  { p2SelIdx = csGridNav(p2SelIdx, 'left');  menuNavCooldown = MENU_NAV_DELAY; audio.sfxScroll(); }
       if (menuNavCooldown === 0 && input.isMenuRight()) { p2SelIdx = csGridNav(p2SelIdx, 'right'); menuNavCooldown = MENU_NAV_DELAY; audio.sfxScroll(); }
       if (menuNavCooldown === 0 && input.isMenuUp())    { p2SelIdx = csGridNav(p2SelIdx, 'up');    menuNavCooldown = MENU_NAV_DELAY; audio.sfxScroll(); }
       if (menuNavCooldown === 0 && input.isMenuDown())  { p2SelIdx = csGridNav(p2SelIdx, 'down');  menuNavCooldown = MENU_NAV_DELAY; audio.sfxScroll(); }
-      if (input.isMenuConfirm()) { p2SelIdx = resolveRandom(p2SelIdx); p2Confirmed = true; audio.sfxConfirmation(); }
+      if (input.isMenuConfirm()) { p2WasRandom = CHAR_IDS[p2SelIdx] === 'random'; p2SelIdx = resolveRandom(p2SelIdx); p2Confirmed = true; audio.sfxConfirmation(); }
     }
     // Once both confirmed → start loading sprites (non-blocking), go to map select
     if (p1Confirmed && p2Confirmed) {
@@ -940,6 +953,7 @@ function render(renderTime) {
         const d2 = CHARACTERS[CHAR_IDS[p2SelIdx]];
         loadSpriteSheetAsync(d1);  // fire-and-forget, pre-fight gate catches completion
         loadSpriteSheetAsync(d2);
+        analytics.trackCharacterSelect(CHAR_IDS[p1SelIdx], CHAR_IDS[p2SelIdx], gameMode, p1WasRandom, p2WasRandom);
         mapSelIdx       = 0;
         gameState       = 'mapSelect';
         menuNavCooldown = MENU_NAV_DELAY;
@@ -982,6 +996,7 @@ function render(renderTime) {
     if (!mapConfirmed && input.isMenuConfirm()) {
       mapConfirmed = true;
       audio.sfxConfirmation();
+      analytics.trackMapSelect(MAP_DEFS[mapSelIdx].id, MAP_DEFS[mapSelIdx].name);
       setActiveBG(MAP_DEFS[mapSelIdx]._img);
       const d1 = CHARACTERS[CHAR_IDS[p1SelIdx]];
       const d2 = CHARACTERS[CHAR_IDS[p2SelIdx]];
@@ -1089,6 +1104,8 @@ function render(renderTime) {
       p2SelIdx    = 1;
       p1Confirmed = false;
       p2Confirmed = false;
+      p1WasRandom = false;
+      p2WasRandom = false;
       gameState   = 'charSelect';
       input.clearFrame();
     }
@@ -1122,6 +1139,8 @@ function render(renderTime) {
       p2SelIdx    = 1;
       p1Confirmed = false;
       p2Confirmed = false;
+      p1WasRandom = false;
+      p2WasRandom = false;
       gameState   = 'charSelect';
     }
     if (input.isEscapeKey()) {
